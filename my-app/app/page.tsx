@@ -1,93 +1,89 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 export default function Home() {
+  const [onlineCount, setOnlineCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    fetch("http://localhost:3001/api/stats")
+      .then(res => res.json())
+      .then(data => setOnlineCount(data.online))
+      .catch(() => {});
+  }, []);
+
   return (
     <>
-      <nav className="glass-nav">
-        <div className="brand-logo">Cone<span className="accent">x</span>ion</div>
-        <Link href="/chat" className="btn-secondary" style={{ fontSize: "0.85rem", padding: "7px 16px" }}>
-          Open App
-        </Link>
+      <div className="premium-bg"></div>
+      
+      <nav className="nav-bar reveal-up">
+        <div className="logo">
+          Cone<span className="accent">x</span>ion
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+          {onlineCount !== null && (
+            <div className="online-status">
+              <span className="online-dot"></span>
+              {onlineCount} Online Now
+            </div>
+          )}
+          <Link href="/chat" className="btn-glass">
+            Enter App
+          </Link>
+        </div>
       </nav>
 
-      <main className="hero">
-        <div className="hero-eyebrow animate-slide-up">
-          <span className="dot" />
+      <main className="hero-wrapper">
+        <div className="hero-pill reveal-up delay-1">
           Live · Anonymous · Instant
         </div>
 
-        <h1 className="hero-title animate-slide-up delay-100">
+        <h1 className="hero-h1 reveal-up delay-2">
           Talk to someone<br />
-          <span className="highlight">new, right now.</span>
+          <span className="text-gradient-accent">new, right now.</span>
         </h1>
 
-        <p className="hero-desc animate-slide-up delay-200">
-          No sign-up. No waiting. Pick how you want to connect and start talking to a stranger in seconds.
+        <p className="hero-p reveal-up delay-3">
+          No sign-up. No waiting. Dive into deep conversations with strangers across the globe in seconds.
         </p>
 
-        {/* Mode selection */}
-        <div className="mode-selector animate-slide-up delay-300">
-          <Link href="/chat?mode=text" className="mode-card" id="mode-text-chat">
-            <div className="mode-card-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
+        <div className="mode-grid reveal-up delay-4">
+          <Link href="/chat?mode=text" className="glass-card">
+            <div className="card-icon-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="28" height="28">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
               </svg>
             </div>
-            <div>
-              <div className="mode-card-label">Text Chat</div>
-              <div className="mode-card-sub">Type &amp; connect anonymously</div>
-            </div>
+            <h3 className="card-title">Text Chat</h3>
+            <p className="card-desc">Type &amp; connect anonymously in a secure, ephemeral space.</p>
           </Link>
 
-          <Link href="/chat?mode=video" className="mode-card" id="mode-video-chat">
-            <div className="mode-card-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
+          <Link href="/chat?mode=video" className="glass-card">
+            <div className="card-icon-wrapper">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="28" height="28">
                 <polygon points="23 7 16 12 23 17 23 7" />
-                <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                <rect x="1" y="5" width="15" height="14" rx="4" ry="4" />
               </svg>
             </div>
-            <div>
-              <div className="mode-card-label">Video Chat</div>
-              <div className="mode-card-sub">Face to face, instantly</div>
-            </div>
+            <h3 className="card-title">Video Chat</h3>
+            <p className="card-desc">Face to face, instantly. High-definition peer-to-peer streaming.</p>
           </Link>
         </div>
       </main>
 
-      {/* Features */}
-      <section className="bento-grid">
-        <div className="bento-card animate-slide-up delay-100">
-          <div className="bento-icon">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
-              <polygon points="23 7 16 12 23 17 23 7" />
-              <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-            </svg>
-          </div>
-          <h3 className="bento-title">HD Video &amp; Audio</h3>
-          <p className="bento-desc">Peer-to-peer WebRTC streaming. No servers storing your data — just a direct line to your conversation partner.</p>
+      <section className="features-container reveal-up delay-4">
+        <div className="feature-item">
+          <h4 style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: "10px", color: "var(--fg)" }}>Direct WebRTC</h4>
+          <p style={{ color: "var(--fg-muted)", lineHeight: 1.6 }}>Your video and audio streams are peer-to-peer. We don&apos;t touch your data.</p>
         </div>
-
-        <div className="bento-card animate-slide-up delay-200">
-          <div className="bento-icon">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-          </div>
-          <h3 className="bento-title">Interest Matching</h3>
-          <p className="bento-desc">Filter by topics you care about — gaming, music, travel, tech — and find people who share your passions.</p>
+        <div className="feature-item">
+          <h4 style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: "10px", color: "var(--fg)" }}>Smart Matchmaking</h4>
+          <p style={{ color: "var(--fg-muted)", lineHeight: 1.6 }}>Filter by topics to find people who actually share your interests.</p>
         </div>
-
-        <div className="bento-card animate-slide-up delay-300">
-          <div className="bento-icon">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-            </svg>
-          </div>
-          <h3 className="bento-title">Absolute Privacy</h3>
-          <p className="bento-desc">Every session is ephemeral. Once you skip or close the tab, the connection vanishes forever.</p>
+        <div className="feature-item">
+          <h4 style={{ fontSize: "1.2rem", fontWeight: 800, marginBottom: "10px", color: "var(--fg)" }}>Absolute Privacy</h4>
+          <p style={{ color: "var(--fg-muted)", lineHeight: 1.6 }}>Connections vanish the moment you skip. No traces left behind.</p>
         </div>
       </section>
     </>
