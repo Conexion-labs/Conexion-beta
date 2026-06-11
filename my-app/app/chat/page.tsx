@@ -45,10 +45,15 @@ function ChatApp() {
   const wsRef = useRef<WebSocket | null>(null);
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+
+  // Auto-scroll
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [msgs]);
+  }, [msgs, mode]);
 
+  // Timer
   useEffect(() => {
     if (status === "chatting") {
       timerRef.current = setInterval(() => setElapsed(e => e + 1), 1000);
@@ -57,6 +62,42 @@ function ChatApp() {
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [status]);
+
+  // Webcam access
+  useEffect(() => {
+    if (mode === "video") {
+      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then((stream) => {
+          setLocalStream(stream);
+          if (localVideoRef.current) {
+            localVideoRef.current.srcObject = stream;
+          }
+        })
+        .catch(err => {
+          console.error("Camera error:", err);
+          setCamOn(false);
+          setMicOn(false);
+        });
+    } else {
+      if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+        setLocalStream(null);
+      }
+    }
+    return () => {
+      if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+      }
+    };
+  }, [mode]);
+
+  // Toggle tracks
+  useEffect(() => {
+    if (localStream) {
+      localStream.getVideoTracks().forEach(t => t.enabled = camOn);
+      localStream.getAudioTracks().forEach(t => t.enabled = micOn);
+    }
+  }, [camOn, micOn, localStream]);
 
   const connectWS = useCallback(() => {
     if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) return;
@@ -208,7 +249,7 @@ function ChatApp() {
       </nav>
 
       {/* Main Content */}
-      <main className="flex-1 flex w-full h-full max-w-6xl mx-auto px-6 pt-32 pb-8 relative z-10">
+      <main className="flex-1 flex w-full h-full max-w-6xl mx-auto px-4 sm:px-6 pt-32 pb-8 relative z-10">
         
         {/* TEXT CHAT */}
         {mode === "text" && (
@@ -317,13 +358,13 @@ function ChatApp() {
         {mode === "video" && (
           <div className="flex-1 flex flex-col w-full h-full relative">
             {/* Massive Main Remote Feed */}
-            <motion.div className="absolute inset-0 bg-white/[0.02] backdrop-blur-2xl rounded-[40px] overflow-hidden flex flex-col items-center justify-center shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
+            <motion.div className="absolute inset-0 bg-black/40 backdrop-blur-2xl rounded-[40px] overflow-hidden flex flex-col items-center justify-center shadow-[0_8px_32px_0_rgba(0,0,0,0.8)] border border-white/5">
               <AnimatePresence mode="wait">
                 {isSearching ? (
                   <motion.div key="searching-video" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center">
                     <div className="relative w-40 h-40 mb-8">
                       <motion.div animate={{ scale: [1, 2.5], opacity: [0.5, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }} className="absolute inset-0 bg-amber-500 rounded-full" />
-                      <div className="relative w-full h-full bg-black rounded-full shadow-[0_0_40px_rgba(245,158,11,0.3)] flex items-center justify-center">
+                      <div className="relative w-full h-full bg-[#0a0a0f] rounded-full shadow-[0_0_40px_rgba(245,158,11,0.3)] flex items-center justify-center z-10">
                         <RiSearchEyeLine className="text-5xl text-amber-500" />
                       </div>
                     </div>
@@ -331,7 +372,7 @@ function ChatApp() {
                   </motion.div>
                 ) : status === "chatting" ? (
                   <motion.div key="chatting-video" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center w-full h-full justify-center relative">
-                    <div className="w-48 h-48 rounded-full bg-white/5 flex items-center justify-center z-10 shadow-2xl">
+                    <div className="w-48 h-48 rounded-full bg-white/5 flex items-center justify-center z-10 shadow-2xl backdrop-blur-xl">
                       <RiCameraLine className="text-6xl text-white/30" />
                     </div>
                   </motion.div>
@@ -345,15 +386,18 @@ function ChatApp() {
             </motion.div>
 
             {/* PiP Local Feed (Bottom Right) */}
-            <motion.div className="absolute bottom-32 right-8 w-64 h-80 bg-black/60 backdrop-blur-xl rounded-3xl overflow-hidden shadow-2xl flex flex-col items-center justify-center z-20">
-              {!camOn ? (
-                <div className="flex flex-col items-center text-white/30">
+            <motion.div className="absolute bottom-32 right-4 sm:right-8 w-40 h-56 sm:w-64 sm:h-80 bg-[#0a0a0f] rounded-3xl overflow-hidden shadow-2xl flex flex-col items-center justify-center z-20 border border-white/10 transition-all">
+              <video 
+                ref={localVideoRef} 
+                autoPlay 
+                playsInline 
+                muted 
+                className={`w-full h-full object-cover transition-opacity duration-300 ${camOn ? "opacity-100" : "opacity-0"}`} 
+              />
+              {!camOn && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-white/30 bg-[#0a0a0f]">
                   <RiCameraOffLine className="text-4xl mb-3 opacity-50" />
                   <p className="font-bold tracking-widest uppercase text-[10px]">Camera Off</p>
-                </div>
-              ) : (
-                <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center">
-                  <RiCameraLine className="text-3xl text-white/40" />
                 </div>
               )}
             </motion.div>
@@ -363,20 +407,28 @@ function ChatApp() {
               {status === "chatting" && (
                 <motion.div 
                   initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
-                  className="absolute bottom-32 left-8 w-80 bg-black/40 backdrop-blur-2xl rounded-3xl flex flex-col max-h-[400px] shadow-2xl z-20"
+                  className="absolute bottom-32 left-4 sm:left-8 w-64 sm:w-80 bg-black/60 backdrop-blur-2xl border border-white/5 rounded-3xl flex flex-col max-h-[400px] shadow-2xl z-20 overflow-hidden"
                 >
-                  <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3">
+                  <div className="flex-1 overflow-y-auto p-4 sm:p-5 flex flex-col gap-3">
                     {msgs.map(m => (
-                      <div key={m.id} className={`text-[14px] px-4 py-2.5 rounded-2xl max-w-[90%] shadow-md ${m.from === "system" ? "self-center text-amber-500/80 text-[10px] font-black uppercase tracking-widest bg-amber-500/10" : m.from === "me" ? "self-end bg-amber-500 text-black font-semibold rounded-tr-sm" : "self-start bg-white/10 text-white rounded-tl-sm"}`}>
+                      <div key={m.id} className={`text-[14px] px-4 py-2.5 rounded-2xl max-w-[90%] shadow-md ${m.from === "system" ? "self-center text-amber-500/80 text-[10px] font-black uppercase tracking-widest bg-amber-500/10" : m.from === "me" ? "self-end bg-amber-500 text-black font-semibold rounded-tr-sm" : "self-start bg-white/10 text-white rounded-tl-sm backdrop-blur-md"}`}>
                         {m.text}
                       </div>
                     ))}
                     <div ref={endRef} />
                   </div>
                   <div className="p-3 bg-white/[0.02]">
-                    <div className="flex items-center gap-2 bg-white/10 p-1.5 pl-4 rounded-2xl focus-within:bg-white/20 transition-colors">
-                      <input className="flex-1 bg-transparent border-none outline-none text-white placeholder-white/40 text-sm" placeholder="Message..." value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === "Enter") send(); }} />
-                      <button className="w-9 h-9 flex items-center justify-center bg-amber-500 text-black rounded-xl disabled:opacity-50" onClick={send} disabled={!draft.trim()}><RiSendPlaneFill className="ml-0.5" /></button>
+                    <div className="flex items-center gap-2 bg-white/10 p-1.5 pl-4 rounded-2xl focus-within:bg-white/20 transition-colors shadow-inner">
+                      <input 
+                        className="flex-1 bg-transparent border-none outline-none text-white placeholder-white/40 text-sm w-full" 
+                        placeholder="Message..." 
+                        value={draft} 
+                        onChange={e => setDraft(e.target.value)} 
+                        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} 
+                      />
+                      <button className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all ${draft.trim() ? "bg-amber-500 text-black shadow-[0_0_15px_rgba(245,158,11,0.4)]" : "bg-white/5 text-white/30 cursor-not-allowed"}`} onClick={send} disabled={!draft.trim()}>
+                        <RiSendPlaneFill className="ml-0.5" />
+                      </button>
                     </div>
                   </div>
                 </motion.div>
@@ -384,36 +436,36 @@ function ChatApp() {
             </AnimatePresence>
 
             {/* Central Floating Controls Dock */}
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 glass-panel !rounded-full px-8 py-4 flex items-center justify-center gap-6 z-30">
-              <button className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl transition-all ${micOn ? "bg-white/10 hover:bg-white/20 text-white" : "bg-red-500/20 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.3)]"}`} onClick={() => setMicOn(!micOn)}>
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 glass-panel !rounded-full px-6 py-3 sm:px-8 sm:py-4 flex items-center justify-center gap-4 sm:gap-6 z-30 shadow-[0_10px_50px_rgba(0,0,0,0.8)] border border-white/5 w-max max-w-full overflow-x-auto">
+              <button className={`w-12 h-12 sm:w-14 sm:h-14 shrink-0 rounded-full flex items-center justify-center text-xl sm:text-2xl transition-all ${micOn ? "bg-white/10 hover:bg-white/20 text-white" : "bg-red-500/20 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.3)]"}`} onClick={() => setMicOn(!micOn)}>
                 {micOn ? <RiMicLine /> : <RiMicOffLine />}
               </button>
-              <button className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl transition-all ${camOn ? "bg-white/10 hover:bg-white/20 text-white" : "bg-red-500/20 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.3)]"}`} onClick={() => setCamOn(!camOn)}>
+              <button className={`w-12 h-12 sm:w-14 sm:h-14 shrink-0 rounded-full flex items-center justify-center text-xl sm:text-2xl transition-all ${camOn ? "bg-white/10 hover:bg-white/20 text-white" : "bg-red-500/20 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.3)]"}`} onClick={() => setCamOn(!camOn)}>
                 {camOn ? <RiCameraLine /> : <RiCameraOffLine />}
               </button>
               
-              <div className="w-px h-8 bg-white/20 mx-2" />
+              <div className="w-px h-8 bg-white/20 mx-1 sm:mx-2 shrink-0" />
 
               {status === "idle" && (
-                <button className="btn-primary py-4 px-8 rounded-full text-lg" onClick={startSearch}>Start Video Chat</button>
+                <button className="btn-primary py-3 px-6 sm:py-4 sm:px-8 rounded-full text-base sm:text-lg whitespace-nowrap" onClick={startSearch}>Start Video Chat</button>
               )}
               {isSearching && (
-                <button className="bg-red-500 hover:bg-red-600 text-white font-bold py-4 px-8 rounded-full flex items-center gap-2 transition-colors shadow-[0_0_20px_rgba(239,68,68,0.4)]" onClick={stopSearch}>
-                  <RiCloseCircleLine className="text-xl" /> Cancel Search
+                <button className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 sm:py-4 sm:px-8 rounded-full flex items-center gap-2 transition-colors shadow-[0_0_20px_rgba(239,68,68,0.4)] whitespace-nowrap" onClick={stopSearch}>
+                  <RiCloseCircleLine className="text-xl shrink-0" /> Cancel Search
                 </button>
               )}
               {status === "chatting" && (
                 <>
-                  <button className="bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 font-bold py-4 px-8 rounded-full flex items-center gap-2 transition-colors" onClick={skip}>
-                    <RiSkipForwardLine className="text-xl" /> Skip
+                  <button className="bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 font-bold py-3 px-6 sm:py-4 sm:px-8 rounded-full flex items-center gap-2 transition-colors whitespace-nowrap" onClick={skip}>
+                    <RiSkipForwardLine className="text-xl shrink-0" /> Skip
                   </button>
-                  <button className="bg-red-500/20 text-red-500 hover:bg-red-500/30 font-bold py-4 px-8 rounded-full flex items-center gap-2 transition-colors" onClick={endCall}>
-                    <RiCloseCircleLine className="text-xl" /> End Call
+                  <button className="bg-red-500/20 text-red-500 hover:bg-red-500/30 font-bold py-3 px-6 sm:py-4 sm:px-8 rounded-full flex items-center gap-2 transition-colors whitespace-nowrap" onClick={endCall}>
+                    <RiCloseCircleLine className="text-xl shrink-0" /> End Call
                   </button>
                 </>
               )}
               {status === "ended" && (
-                <button className="btn-primary py-4 px-8 rounded-full text-lg" onClick={startSearch}>New Call</button>
+                <button className="btn-primary py-3 px-6 sm:py-4 sm:px-8 rounded-full text-base sm:text-lg whitespace-nowrap" onClick={startSearch}>New Call</button>
               )}
             </div>
           </div>
@@ -430,7 +482,7 @@ function ChatApp() {
           >
             <motion.div 
               initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="bg-white/[0.02] backdrop-blur-3xl p-10 rounded-[40px] w-full max-w-xl shadow-[0_10px_50px_rgba(0,0,0,0.8)] relative overflow-hidden"
+              className="bg-white/[0.02] backdrop-blur-3xl p-6 sm:p-10 rounded-[40px] w-full max-w-xl shadow-[0_10px_50px_rgba(0,0,0,0.8)] relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/10 rounded-full blur-[100px] -mr-20 -mt-20 pointer-events-none" />
               
