@@ -192,8 +192,8 @@ function tryMatch(newId) {
   const setA             = new Set(newClient.interests);
   const sharedInterests  = partnerClient.interests.filter((i) => setA.has(i));
 
-  send(newClient.ws,    { type: "matched", sharedInterests, sessionId });
-  send(partnerClient.ws, { type: "matched", sharedInterests, sessionId });
+  send(newClient.ws,    { type: "matched", sharedInterests, sessionId, role: "caller" });
+  send(partnerClient.ws, { type: "matched", sharedInterests, sessionId, role: "callee" });
 
   console.log(
     `[match] ${newId.slice(0, 6)} ↔ ${partnerId.slice(0, 6)}` +
@@ -257,6 +257,14 @@ wss.on("connection", (ws) => {
         {
           const partner = clients.get(client.partnerId);
           if (partner) send(partner.ws, { type: "message", text: msg.text.trim(), ts: Date.now() });
+        }
+        break;
+
+      case "rtc_signal":
+        if (!client.partnerId || !msg.payload) break;
+        {
+          const partner = clients.get(client.partnerId);
+          if (partner) send(partner.ws, { type: "rtc_signal", payload: msg.payload });
         }
         break;
 

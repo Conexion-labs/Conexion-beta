@@ -55,7 +55,8 @@ export default function Home() {
   const [onlineCount, setOnlineCount] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch("http://localhost:3001/api/stats")
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/stats";
+    fetch(API_URL)
       .then(res => res.json())
       .then(data => setOnlineCount(data.online))
       .catch(() => {});

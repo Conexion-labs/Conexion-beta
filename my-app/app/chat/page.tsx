@@ -46,7 +46,9 @@ function ChatApp() {
   const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
 
   // Auto-scroll
   useEffect(() => {
@@ -99,6 +101,40 @@ function ChatApp() {
     }
   }, [camOn, micOn, localStream]);
 
+  const wsSend = (payload: object) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+  };
+
+  const setupWebRTC = useCallback((role: "caller" | "callee") => {
+    if (pcRef.current) pcRef.current.close();
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:global.stun.twilio.com:3478" }] });
+    pcRef.current = pc;
+
+    if (localStream) {
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+    }
+
+    pc.ontrack = (event) => {
+      if (remoteVideoRef.current && event.streams[0]) {
+        remoteVideoRef.current.srcObject = event.streams[0];
+      }
+    };
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        wsSend({ type: "rtc_signal", payload: { candidate: event.candidate } });
+      }
+    };
+
+    if (role === "caller") {
+      pc.createOffer()
+        .then(offer => pc.setLocalDescription(offer))
+        .then(() => wsSend({ type: "rtc_signal", payload: { offer: pc.localDescription } }))
+        .catch(console.error);
+    }
+  }, [localStream]);
+
   const connectWS = useCallback(() => {
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       return wsRef.current;
@@ -115,8 +151,8 @@ function ChatApp() {
       }, 25000);
     };
 
-    ws.onmessage = (ev) => {
-      let msg: { type: string; [k: string]: unknown };
+    ws.onmessage = async (ev) => {
+      let msg: { type: string; [k: string]: any };
       try { msg = JSON.parse(ev.data); } catch { return; }
 
       switch (msg.type) {
@@ -139,13 +175,39 @@ function ChatApp() {
               ? `Matched! You both like: ${shared.join(", ")} 🎉`
               : "Connected to a stranger. Say hello! 👋",
           }]);
+          
+          if (mode === "video") {
+            setupWebRTC(msg.role as "caller" | "callee");
+          }
           break;
         }
         case "message":
           setMsgs(m => [...m, { id: crypto.randomUUID(), from: "them", text: msg.text as string, ts: msg.ts as number }]);
           break;
+        case "rtc_signal": {
+          const pc = pcRef.current;
+          if (!pc) break;
+          const { offer, answer, candidate } = msg.payload;
+          try {
+            if (offer) {
+              await pc.setRemoteDescription(new RTCSessionDescription(offer));
+              const ans = await pc.createAnswer();
+              await pc.setLocalDescription(ans);
+              wsSend({ type: "rtc_signal", payload: { answer: pc.localDescription } });
+            } else if (answer) {
+              await pc.setRemoteDescription(new RTCSessionDescription(answer));
+            } else if (candidate) {
+              await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            }
+          } catch (err) {
+            console.error("RTC Error", err);
+          }
+          break;
+        }
         case "partner_left":
           setStatus("ended");
+          if (pcRef.current) pcRef.current.close();
+          if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
           setMsgs(m => [...m, { id: crypto.randomUUID(), from: "system", text: "Stranger has disconnected." }]);
           break;
       }
@@ -156,12 +218,13 @@ function ChatApp() {
       setWsError(true);
     };
     return ws;
-  }, []);
+  }, [mode, setupWebRTC]);
 
   useEffect(() => {
     const ws = connectWS();
     return () => {
       if (pingRef.current) clearInterval(pingRef.current);
+      if (pcRef.current) pcRef.current.close();
       ws?.close();
     };
   }, [connectWS]);
@@ -389,10 +452,13 @@ function ChatApp() {
                     <p className="text-white/50 text-xl font-medium tracking-wide">Connecting you to the perfect match.</p>
                   </motion.div>
                 ) : status === "chatting" ? (
-                  <motion.div key="chatting-video" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center justify-center w-full h-full">
-                    <div className="w-64 h-64 sm:w-80 sm:h-80 rounded-full bg-white/5 flex items-center justify-center shadow-[0_0_100px_rgba(255,255,255,0.05)] backdrop-blur-3xl border border-white/10">
-                      <RiCameraLine className="text-[100px] text-white/10" />
-                    </div>
+                  <motion.div key="chatting-video" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center justify-center w-full h-full relative">
+                    <video 
+                      ref={remoteVideoRef} 
+                      autoPlay 
+                      playsInline 
+                      className="w-full h-full object-cover" 
+                    />
                   </motion.div>
                 ) : (
                   <motion.div key="waiting-video" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center text-center">
