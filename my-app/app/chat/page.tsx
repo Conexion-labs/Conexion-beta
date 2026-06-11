@@ -3,6 +3,9 @@
 import { useState, useEffect, useRef, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
+import ParticleBackground from "../components/ParticleBackground";
+import { RiMessage3Line, RiVideoChatLine, RiMicLine, RiMicOffLine, RiCameraLine, RiCameraOffLine, RiSendPlaneFill, RiSkipForwardLine, RiCloseCircleLine, RiSearchEyeLine } from "react-icons/ri";
 
 type Status = "idle" | "connecting" | "queued" | "chatting" | "ended";
 type ChatMode = "text" | "video";
@@ -19,17 +22,6 @@ function fmt(s: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
-/* ── Icons ──────────────────────────────────── */
-const MicIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>;
-const MicOffIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V5a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>;
-const CamIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>;
-const CamOffIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"/><line x1="1" y1="1" x2="23" y2="23"/></svg>;
-const SendIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="18" height="18"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>;
-const SkipIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>;
-const EndCallIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 5a10.94 10.94 0 0 0-2.78 5.67 1 1 0 0 0 .93 1.11h2.6a1 1 0 0 0 1-.78 8 8 0 0 1 .53-1.73M10.68 6a7.07 7.07 0 0 1 5 5"/><path d="M14.61 14.61A3.11 3.11 0 0 1 12 16a3 3 0 0 1-2.68-1.68"/></svg>;
-const CloseIcon = () => <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
-
-/* ── Main App ───────────────────────────────── */
 function ChatApp() {
   const searchParams = useSearchParams();
   const modeParam = searchParams.get("mode") as ChatMode | null;
@@ -168,244 +160,318 @@ function ChatApp() {
   const isSearching = status === "connecting" || status === "queued";
 
   return (
-    <div className="app-shell">
-      {/* ── Nav ── */}
-      <header className="nav-bar">
-        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
-          <Link href="/" className="logo">
-            Cone<span className="accent">x</span>ion
+    <div className="relative min-h-screen w-full flex flex-col items-center bg-[#07070e] text-white overflow-hidden">
+      <ParticleBackground />
+      {/* Ambient glows */}
+      <div className="pointer-events-none fixed top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-amber-500/5 blur-[120px] mix-blend-screen z-0"></div>
+      <div className="pointer-events-none fixed bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-violet-500/5 blur-[140px] mix-blend-screen z-0"></div>
+
+      {/* Nav */}
+      <nav className="nav-bar">
+        <div className="flex items-center gap-8">
+          <Link href="/" className="text-2xl font-black tracking-tight text-white hover:opacity-80 transition-opacity">
+            Cone<span className="text-amber-500">x</span>ion
           </Link>
 
-          <div style={{ display: "flex", background: "var(--bg-2)", padding: 4, borderRadius: "var(--r-md)", border: "1px solid var(--border)" }}>
+          <div className="flex bg-white/[0.02] p-1.5 rounded-2xl shadow-xl backdrop-blur-md">
             <button
               onClick={() => switchMode("text")}
-              style={{
-                padding: "6px 16px", borderRadius: "var(--r-sm)", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer", border: "none",
-                background: mode === "text" ? "var(--amber)" : "transparent",
-                color: mode === "text" ? "#0a0a0a" : "var(--fg-muted)",
-              }}
-            >Text</button>
+              className={`px-5 py-2 rounded-xl font-bold text-sm transition-all flex items-center gap-2 ${mode === "text" ? "bg-white text-black shadow-[0_5px_15px_rgba(255,255,255,0.2)]" : "text-white/40 hover:text-white"}`}
+            >
+              <RiMessage3Line className="text-lg" /> Text
+            </button>
             <button
               onClick={() => switchMode("video")}
-              style={{
-                padding: "6px 16px", borderRadius: "var(--r-sm)", fontWeight: 600, fontSize: "0.85rem", cursor: "pointer", border: "none",
-                background: mode === "video" ? "var(--amber)" : "transparent",
-                color: mode === "video" ? "#0a0a0a" : "var(--fg-muted)",
-              }}
-            >Video</button>
+              className={`px-5 py-2 rounded-xl font-bold text-sm transition-all flex items-center gap-2 ${mode === "video" ? "bg-white text-black shadow-[0_5px_15px_rgba(255,255,255,0.2)]" : "text-white/40 hover:text-white"}`}
+            >
+              <RiVideoChatLine className="text-lg" /> Video
+            </button>
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+        <div className="flex items-center gap-5">
           {status === "chatting" && (
-            <div style={{ fontSize: "0.85rem", fontWeight: 600, color: "var(--amber)", background: "var(--amber-muted)", padding: "4px 12px", borderRadius: "var(--r-full)", border: "1px solid var(--border)" }}>
+            <motion.div initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} className="text-[12px] font-black uppercase tracking-widest text-amber-500 bg-amber-500/10 px-4 py-2 rounded-full shadow-[0_0_20px_rgba(245,158,11,0.2)]">
               {fmt(elapsed)}
-            </div>
+            </motion.div>
           )}
           {onlineCount > 0 && (
-            <div className="online-status">
-              <span className="online-dot"></span>
+            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-white/50">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-[0_0_10px_rgba(34,197,94,0.5)]"></span>
               {onlineCount} Online
             </div>
           )}
-          <button className="btn-secondary" onClick={() => setShowTags(true)} style={{ padding: "6px 14px", fontSize: "0.8rem" }}>
-            Interests {tags.length > 0 && <span style={{ color: "var(--amber)" }}>({tags.length})</span>}
+          <button className="btn-secondary text-[11px] uppercase tracking-widest px-5 py-2.5" onClick={() => setShowTags(true)}>
+            Interests {tags.length > 0 && <span className="text-amber-500">({tags.length})</span>}
           </button>
         </div>
-      </header>
+      </nav>
 
-      {/* ── Main ── */}
-      <main className="app-main" style={{ marginTop: 60 }}>
-
-        {/* ══ TEXT CHAT ══ */}
+      {/* Main Content */}
+      <main className="flex-1 flex w-full h-full max-w-6xl mx-auto px-6 pt-32 pb-8 relative z-10">
+        
+        {/* TEXT CHAT */}
         {mode === "text" && (
-          <div className="chat-window">
+          <div className="flex-1 flex flex-col max-w-3xl w-full mx-auto glass-panel relative overflow-hidden">
             
-            {(status === "idle" || status === "ended") && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-                <div style={{ width: 64, height: 64, borderRadius: "var(--r-md)", background: "var(--bg-2)", border: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--amber)", margin: "0 auto 20px" }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="28" height="28"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-                </div>
-                <h2 style={{ fontSize: "1.5rem", fontWeight: 700, margin: "0 0 12px 0" }}>{status === "ended" ? "Chat Ended" : "Start a Chat"}</h2>
-                <p style={{ color: "var(--fg-muted)", fontSize: "0.95rem", margin: "0 0 24px 0", maxWidth: 400 }}>
-                  {tags.length > 0 ? `Matching by interests: ${tags.join(", ")}` : "Match with a random stranger globally. No traces left behind."}
-                </p>
-                <button className="btn-primary" onClick={startSearch}>
-                  {status === "ended" ? "New Chat" : "Start Chatting"}
-                </button>
-                {wsError && <p style={{ color: "var(--danger)", marginTop: 16 }}>Server disconnected.</p>}
-              </div>
-            )}
-
-            {isSearching && (
-              <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center" }}>
-                <div style={{ width: 64, height: 64, borderRadius: "var(--r-full)", border: "2px solid var(--amber)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--amber)", margin: "0 auto 20px" }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="24" height="24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                </div>
-                <h2 style={{ fontSize: "1.2rem", fontWeight: 600, margin: "0 0 8px 0" }}>{status === "queued" ? `Queue Position: ${queuePosition}` : "Scanning..."}</h2>
-                <p style={{ color: "var(--fg-muted)", margin: "0 0 24px 0", fontSize: "0.9rem" }}>Finding the perfect match for you.</p>
-                <button className="btn-secondary" onClick={stopSearch}>Cancel Search</button>
-              </div>
-            )}
-
-            {status === "chatting" && (
-              <>
-                <div className="messages-area">
-                  {msgs.map(m => 
-                    m.from === "system" 
-                      ? <div key={m.id} className="msg-sys">{m.text}</div>
-                      : <div key={m.id} className={`msg-bubble ${m.from === "me" ? "msg-me" : "msg-them"}`}>{m.text}</div>
-                  )}
-                  <div ref={endRef} />
-                </div>
-                
-                <div className="input-zone">
-                  <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                    <button className="btn-secondary" onClick={skip} style={{ padding: "6px 12px", fontSize: "0.85rem" }}><SkipIcon /> Skip</button>
-                    <button className="btn-secondary" onClick={endCall} style={{ padding: "6px 12px", fontSize: "0.85rem", color: "var(--danger)" }}><CloseIcon /> End</button>
+            <AnimatePresence mode="wait">
+              {(status === "idle" || status === "ended") && (
+                <motion.div 
+                  key="idle"
+                  initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -30 }}
+                  className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center"
+                >
+                  <div className="w-24 h-24 rounded-3xl bg-amber-500/10 flex items-center justify-center text-amber-500 mb-6 shadow-[0_0_40px_rgba(245,158,11,0.2)] relative">
+                    <RiMessage3Line className="text-5xl" />
                   </div>
-                  <div className="chat-input-wrapper">
-                    <textarea
-                      className="chat-input"
-                      placeholder="Type a message..."
-                      value={draft}
-                      onChange={e => setDraft(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-                      rows={1}
-                    />
-                    <button className="btn-icon active-accent" onClick={send} disabled={!draft.trim()} style={{ width: 32, height: 32, borderRadius: "var(--r-sm)" }}>
-                      <SendIcon />
-                    </button>
+                  <h2 className="text-4xl font-black mb-4 tracking-tight">{status === "ended" ? "Chat Ended" : "Start a Text Chat"}</h2>
+                  <p className="text-white/40 text-lg mb-10 max-w-md leading-relaxed">
+                    {tags.length > 0 ? `Matching by interests: ${tags.join(", ")}` : "Connect with a random stranger globally. Absolutely no traces left behind."}
+                  </p>
+                  <button className="btn-primary text-lg px-8 py-4" onClick={startSearch}>
+                    <RiSearchEyeLine className="text-2xl" /> {status === "ended" ? "Find New Chat" : "Start Searching"}
+                  </button>
+                  {wsError && <p className="text-red-400 mt-6 text-sm font-semibold tracking-wide">Server connection lost. Retrying...</p>}
+                </motion.div>
+              )}
+
+              {isSearching && (
+                <motion.div 
+                  key="searching"
+                  initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 1.05 }}
+                  className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center"
+                >
+                  <div className="relative w-40 h-40 flex items-center justify-center mb-10">
+                    <motion.div animate={{ scale: [1, 3], opacity: [0.5, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }} className="absolute inset-0 bg-amber-500 rounded-full" />
+                    <motion.div animate={{ scale: [1, 3], opacity: [0.5, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeOut", delay: 1 }} className="absolute inset-0 bg-amber-500 rounded-full" />
+                    <div className="relative w-20 h-20 bg-black rounded-full flex items-center justify-center z-10 shadow-[0_0_50px_rgba(245,158,11,0.5)]">
+                      <RiSearchEyeLine className="text-4xl text-amber-500" />
+                    </div>
                   </div>
-                </div>
-              </>
-            )}
+                  <h2 className="text-3xl font-black mb-3">{status === "queued" ? `Queue Position: ${queuePosition}` : "Scanning the globe..."}</h2>
+                  <p className="text-white/40 text-lg mb-10">Finding the perfect match for you.</p>
+                  <button className="btn-secondary px-8 py-3" onClick={stopSearch}>Cancel Search</button>
+                </motion.div>
+              )}
+
+              {status === "chatting" && (
+                <motion.div 
+                  key="chatting"
+                  initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                  className="absolute inset-0 flex flex-col"
+                >
+                  <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-4">
+                    <AnimatePresence initial={false}>
+                      {msgs.map(m => (
+                        <motion.div 
+                          key={m.id}
+                          initial={{ opacity: 0, y: 20, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }}
+                          className={`max-w-[80%] p-4 px-6 rounded-3xl text-[16px] leading-relaxed shadow-lg ${
+                            m.from === "system" 
+                              ? "self-center bg-white/5 text-white/50 text-[11px] font-black uppercase tracking-widest rounded-full py-2.5 px-6 shadow-none" 
+                              : m.from === "me" 
+                                ? "self-end bg-amber-500 text-black font-semibold rounded-tr-sm" 
+                                : "self-start bg-white/10 text-white font-medium rounded-tl-sm backdrop-blur-md"
+                          }`}
+                        >
+                          {m.text}
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                    <div ref={endRef} />
+                  </div>
+                  
+                  <div className="p-4 bg-white/[0.01] backdrop-blur-3xl">
+                    <div className="flex items-center gap-4 mb-4 px-2">
+                      <button className="text-white/40 hover:text-amber-500 flex items-center gap-1.5 text-xs font-black uppercase tracking-widest transition-colors" onClick={skip}>
+                        <RiSkipForwardLine className="text-xl" /> Skip
+                      </button>
+                      <button className="text-white/40 hover:text-red-500 flex items-center gap-1.5 text-xs font-black uppercase tracking-widest transition-colors" onClick={endCall}>
+                        <RiCloseCircleLine className="text-xl" /> End
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-3 bg-white/5 p-2 pl-6 rounded-3xl focus-within:bg-white/10 transition-colors shadow-inner">
+                      <input
+                        className="flex-1 bg-transparent border-none outline-none text-white placeholder-white/30 text-[16px]"
+                        placeholder="Type a message..."
+                        value={draft}
+                        onChange={e => setDraft(e.target.value)}
+                        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+                      />
+                      <button 
+                        className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${draft.trim() ? "bg-amber-500 text-black hover:scale-105 shadow-[0_0_20px_rgba(245,158,11,0.4)]" : "bg-white/5 text-white/30 cursor-not-allowed"}`} 
+                        onClick={send} 
+                        disabled={!draft.trim()}
+                      >
+                        <RiSendPlaneFill className="text-xl ml-1" />
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         )}
 
-        {/* ══ VIDEO CHAT ══ */}
+        {/* VIDEO CHAT */}
         {mode === "video" && (
-          <div className="video-layout">
-            <div className="video-grid">
-              
-              <div className="video-feed self">
-                {!camOn ? (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", color: "var(--fg-muted)" }}>
-                    <CamOffIcon />
-                    <p style={{ marginTop: 8, fontWeight: 500, fontSize: "0.9rem" }}>Camera Disabled</p>
-                  </div>
-                ) : (
-                  <div style={{ width: 80, height: 80, borderRadius: "50%", background: "var(--bg-3)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border)" }}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="32" height="32"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  </div>
-                )}
-                <div className="video-tag">You</div>
-              </div>
-
-              <div className="video-feed">
+          <div className="flex-1 flex flex-col w-full h-full relative">
+            {/* Massive Main Remote Feed */}
+            <motion.div className="absolute inset-0 bg-white/[0.02] backdrop-blur-2xl rounded-[40px] overflow-hidden flex flex-col items-center justify-center shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
+              <AnimatePresence mode="wait">
                 {isSearching ? (
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                    <div style={{ width: 48, height: 48, borderRadius: "50%", border: "2px solid var(--amber)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--amber)", margin: "0 auto 12px" }}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <motion.div key="searching-video" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center">
+                    <div className="relative w-40 h-40 mb-8">
+                      <motion.div animate={{ scale: [1, 2.5], opacity: [0.5, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }} className="absolute inset-0 bg-amber-500 rounded-full" />
+                      <div className="relative w-full h-full bg-black rounded-full shadow-[0_0_40px_rgba(245,158,11,0.3)] flex items-center justify-center">
+                        <RiSearchEyeLine className="text-5xl text-amber-500" />
+                      </div>
                     </div>
-                    <p style={{ fontWeight: 600, fontSize: "1rem", margin: 0 }}>Searching...</p>
-                  </div>
+                    <p className="font-black text-2xl tracking-tight text-white/80">Searching...</p>
+                  </motion.div>
                 ) : status === "chatting" ? (
-                  <>
-                    <div style={{ width: 80, height: 80, borderRadius: "50%", background: "var(--bg-3)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--border)" }}>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="32" height="32"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  <motion.div key="chatting-video" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center w-full h-full justify-center relative">
+                    <div className="w-48 h-48 rounded-full bg-white/5 flex items-center justify-center z-10 shadow-2xl">
+                      <RiCameraLine className="text-6xl text-white/30" />
                     </div>
-                    <div className="video-tag" style={{ background: "var(--amber)", color: "#0a0a0a" }}>Stranger</div>
-                  </>
+                  </motion.div>
                 ) : (
-                  <p style={{ color: "var(--fg-muted)", fontWeight: 500, margin: 0 }}>{status === "ended" ? "Session Ended" : "Waiting to Connect"}</p>
+                  <motion.div key="waiting-video" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center text-white/20">
+                    <RiVideoChatLine className="text-7xl mb-6 opacity-30" />
+                    <p className="font-black tracking-widest uppercase text-lg">{status === "ended" ? "Session Ended" : "Ready to Connect"}</p>
+                  </motion.div>
                 )}
-              </div>
-            </div>
+              </AnimatePresence>
+            </motion.div>
 
-            <div className="controls-dock">
-              <button className={`btn-icon ${!micOn ? 'danger' : ''}`} onClick={() => setMicOn(!micOn)}>
-                {micOn ? <MicIcon /> : <MicOffIcon />}
+            {/* PiP Local Feed (Bottom Right) */}
+            <motion.div className="absolute bottom-32 right-8 w-64 h-80 bg-black/60 backdrop-blur-xl rounded-3xl overflow-hidden shadow-2xl flex flex-col items-center justify-center z-20">
+              {!camOn ? (
+                <div className="flex flex-col items-center text-white/30">
+                  <RiCameraOffLine className="text-4xl mb-3 opacity-50" />
+                  <p className="font-bold tracking-widest uppercase text-[10px]">Camera Off</p>
+                </div>
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center">
+                  <RiCameraLine className="text-3xl text-white/40" />
+                </div>
+              )}
+            </motion.div>
+
+            {/* Floating Quick Chat (Bottom Left) */}
+            <AnimatePresence>
+              {status === "chatting" && (
+                <motion.div 
+                  initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}
+                  className="absolute bottom-32 left-8 w-80 bg-black/40 backdrop-blur-2xl rounded-3xl flex flex-col max-h-[400px] shadow-2xl z-20"
+                >
+                  <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3">
+                    {msgs.map(m => (
+                      <div key={m.id} className={`text-[14px] px-4 py-2.5 rounded-2xl max-w-[90%] shadow-md ${m.from === "system" ? "self-center text-amber-500/80 text-[10px] font-black uppercase tracking-widest bg-amber-500/10" : m.from === "me" ? "self-end bg-amber-500 text-black font-semibold rounded-tr-sm" : "self-start bg-white/10 text-white rounded-tl-sm"}`}>
+                        {m.text}
+                      </div>
+                    ))}
+                    <div ref={endRef} />
+                  </div>
+                  <div className="p-3 bg-white/[0.02]">
+                    <div className="flex items-center gap-2 bg-white/10 p-1.5 pl-4 rounded-2xl focus-within:bg-white/20 transition-colors">
+                      <input className="flex-1 bg-transparent border-none outline-none text-white placeholder-white/40 text-sm" placeholder="Message..." value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === "Enter") send(); }} />
+                      <button className="w-9 h-9 flex items-center justify-center bg-amber-500 text-black rounded-xl disabled:opacity-50" onClick={send} disabled={!draft.trim()}><RiSendPlaneFill className="ml-0.5" /></button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Central Floating Controls Dock */}
+            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 glass-panel !rounded-full px-8 py-4 flex items-center justify-center gap-6 z-30">
+              <button className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl transition-all ${micOn ? "bg-white/10 hover:bg-white/20 text-white" : "bg-red-500/20 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.3)]"}`} onClick={() => setMicOn(!micOn)}>
+                {micOn ? <RiMicLine /> : <RiMicOffLine />}
               </button>
-              <button className={`btn-icon ${!camOn ? 'danger' : ''}`} onClick={() => setCamOn(!camOn)}>
-                {camOn ? <CamIcon /> : <CamOffIcon />}
+              <button className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl transition-all ${camOn ? "bg-white/10 hover:bg-white/20 text-white" : "bg-red-500/20 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.3)]"}`} onClick={() => setCamOn(!camOn)}>
+                {camOn ? <RiCameraLine /> : <RiCameraOffLine />}
               </button>
               
-              <div style={{ width: 1, background: "var(--border)", margin: "0 8px" }}></div>
+              <div className="w-px h-8 bg-white/20 mx-2" />
 
               {status === "idle" && (
-                <button className="btn-primary" onClick={startSearch}>Start Video Chat</button>
+                <button className="btn-primary py-4 px-8 rounded-full text-lg" onClick={startSearch}>Start Video Chat</button>
               )}
               {isSearching && (
-                <button className="btn-icon danger" onClick={stopSearch}><CloseIcon /></button>
+                <button className="bg-red-500 hover:bg-red-600 text-white font-bold py-4 px-8 rounded-full flex items-center gap-2 transition-colors shadow-[0_0_20px_rgba(239,68,68,0.4)]" onClick={stopSearch}>
+                  <RiCloseCircleLine className="text-xl" /> Cancel Search
+                </button>
               )}
               {status === "chatting" && (
                 <>
-                  <button className="btn-secondary" onClick={skip} style={{ color: "var(--amber)" }}><SkipIcon /> Skip</button>
-                  <button className="btn-secondary" onClick={endCall} style={{ color: "var(--danger)" }}><EndCallIcon /> End</button>
+                  <button className="bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 font-bold py-4 px-8 rounded-full flex items-center gap-2 transition-colors" onClick={skip}>
+                    <RiSkipForwardLine className="text-xl" /> Skip
+                  </button>
+                  <button className="bg-red-500/20 text-red-500 hover:bg-red-500/30 font-bold py-4 px-8 rounded-full flex items-center gap-2 transition-colors" onClick={endCall}>
+                    <RiCloseCircleLine className="text-xl" /> End Call
+                  </button>
                 </>
               )}
               {status === "ended" && (
-                <button className="btn-primary" onClick={startSearch}>New Chat</button>
+                <button className="btn-primary py-4 px-8 rounded-full text-lg" onClick={startSearch}>New Call</button>
               )}
             </div>
-
-            {/* Quick Chat Overlay for Video Mode */}
-            {status === "chatting" && (
-              <div style={{ position: "absolute", bottom: 100, left: 20, width: 300, background: "var(--bg-2)", borderRadius: "var(--r-md)", border: "1px solid var(--border)", display: "flex", flexDirection: "column", maxHeight: 250 }}>
-                <div style={{ flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 6 }}>
-                  {msgs.map(m => 
-                    m.from === "system" 
-                      ? <div key={m.id} style={{ alignSelf: "center", fontSize: "0.75rem", color: "var(--fg-muted)" }}>{m.text}</div>
-                      : <div key={m.id} style={{ alignSelf: m.from === "me" ? "flex-end" : "flex-start", background: m.from === "me" ? "var(--amber)" : "var(--bg-3)", color: m.from === "me" ? "#0a0a0a" : "var(--fg)", border: "1px solid var(--border)", padding: "6px 10px", borderRadius: "var(--r-sm)", fontSize: "0.85rem", maxWidth: "85%" }}>{m.text}</div>
-                  )}
-                  <div ref={endRef} />
-                </div>
-                <div style={{ padding: 8, borderTop: "1px solid var(--border)", display: "flex", gap: 8 }}>
-                  <input type="text" placeholder="Message..." value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === "Enter") send(); }} style={{ flex: 1, background: "var(--bg-3)", border: "1px solid var(--border)", borderRadius: "var(--r-sm)", padding: "4px 8px", color: "var(--fg)", outline: "none", fontSize: "0.85rem" }} />
-                  <button onClick={send} disabled={!draft.trim()} style={{ background: "var(--amber)", border: "none", width: 28, height: 28, borderRadius: "var(--r-sm)", color: "#0a0a0a", display: "flex", alignItems: "center", justifyContent: "center", opacity: draft.trim() ? 1 : 0.5 }}><SendIcon /></button>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </main>
 
-      {/* ── Interests Modal ── */}
-      {showTags && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowTags(false)}>
-          <div className="static-modal">
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", margin: "0 0 20px 0" }}>
-              <h2 style={{ fontSize: "1.2rem", fontWeight: 700, margin: 0 }}>Filter Interests</h2>
-              <button onClick={() => setShowTags(false)} style={{ background: "transparent", border: "none", color: "var(--fg-muted)", cursor: "pointer" }}><CloseIcon /></button>
-            </div>
-            
-            <p style={{ color: "var(--fg-muted)", margin: "0 0 24px 0", fontSize: "0.9rem", lineHeight: 1.5 }}>
-              Select topics you enjoy. The system will prioritize matching you with strangers who share these interests.
-            </p>
+      {/* Interests Modal */}
+      <AnimatePresence>
+        {showTags && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+            onClick={(e) => e.target === e.currentTarget && setShowTags(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white/[0.02] backdrop-blur-3xl p-10 rounded-[40px] w-full max-w-xl shadow-[0_10px_50px_rgba(0,0,0,0.8)] relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/10 rounded-full blur-[100px] -mr-20 -mt-20 pointer-events-none" />
+              
+              <div className="flex justify-between items-center mb-8 relative z-10">
+                <h2 className="text-3xl font-black tracking-tight">Filter Interests</h2>
+                <button className="text-white/30 hover:text-white transition-colors" onClick={() => setShowTags(false)}>
+                  <RiCloseCircleLine className="text-4xl" />
+                </button>
+              </div>
+              
+              <p className="text-white/40 mb-10 text-lg leading-relaxed relative z-10">
+                Select topics you enjoy. The matchmaking algorithm will prioritize connecting you with strangers who share your vibe.
+              </p>
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, margin: "0 0 32px 0" }}>
-              {INTERESTS.map(t => {
-                const isActive = tags.includes(t);
-                return (
-                  <button
-                    key={t}
-                    className={`tag-pill ${isActive ? "selected" : ""}`}
-                    onClick={() => setTags(p => isActive ? p.filter(x => x !== t) : [...p, t])}
-                  >
-                    {t}
-                  </button>
-                );
-              })}
-            </div>
+              <div className="flex flex-wrap gap-3 mb-12 relative z-10">
+                {INTERESTS.map(t => {
+                  const isActive = tags.includes(t);
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => setTags(p => isActive ? p.filter(x => x !== t) : [...p, t])}
+                      className={`px-6 py-3 rounded-2xl font-bold text-sm transition-all ${
+                        isActive 
+                          ? "bg-amber-500 text-black shadow-[0_0_20px_rgba(245,158,11,0.4)] scale-105" 
+                          : "bg-white/5 text-white/50 hover:bg-white/10 hover:text-white"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  );
+                })}
+              </div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button className="btn-secondary" onClick={() => setTags([])}>Clear All</button>
-              <button className="btn-primary" onClick={() => setShowTags(false)}>Save Filters</button>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="flex justify-end gap-4 relative z-10">
+                <button className="px-8 py-4 font-bold text-white/40 hover:text-white transition-colors" onClick={() => setTags([])}>Clear All</button>
+                <button className="btn-primary px-10 py-4" onClick={() => setShowTags(false)}>Save Filters</button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
