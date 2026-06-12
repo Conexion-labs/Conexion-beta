@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import ParticleBackground from "../components/ParticleBackground";
-import { RiMessage3Line, RiVideoChatLine, RiMicLine, RiMicOffLine, RiCameraLine, RiCameraOffLine, RiSendPlaneFill, RiSkipForwardLine, RiCloseCircleLine, RiSearchEyeLine } from "react-icons/ri";
+import { RiMessage3Line, RiVideoChatLine, RiMicLine, RiMicOffLine, RiCameraLine, RiCameraOffLine, RiSendPlaneFill, RiSkipForwardLine, RiCloseCircleLine, RiSearchEyeLine, RiAlertFill } from "react-icons/ri";
 
 type Status = "idle" | "connecting" | "queued" | "chatting" | "ended";
 type ChatMode = "text" | "video";
@@ -40,6 +40,11 @@ function ChatApp() {
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [wsError, setWsError] = useState(false);
 
+  // NSFW Detection State
+  const [nsfwModel, setNsfwModel] = useState<any>(null);
+  const [isRemoteNsfw, setIsRemoteNsfw] = useState(false);
+  const [isLocalNsfw, setIsLocalNsfw] = useState(false);
+
   const endRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -49,6 +54,26 @@ function ChatApp() {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+
+  // Load NSFW model
+  useEffect(() => {
+    let isMounted = true;
+    const loadModel = async () => {
+      try {
+        await import("@tensorflow/tfjs");
+        const nsfwjs = await import("nsfwjs");
+        const model = await nsfwjs.load();
+        if (isMounted) {
+          setNsfwModel(model);
+          console.log("NSFW model loaded");
+        }
+      } catch (err) {
+        console.error("Failed to load NSFW model", err);
+      }
+    };
+    loadModel();
+    return () => { isMounted = false; };
+  }, []);
 
   // Auto-scroll
   useEffect(() => {
@@ -100,6 +125,43 @@ function ChatApp() {
       localStream.getAudioTracks().forEach(t => t.enabled = micOn);
     }
   }, [camOn, micOn, localStream]);
+
+  // NSFW Analysis Loop
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (mode === "video" && nsfwModel) {
+      interval = setInterval(async () => {
+        // Check remote video
+        if (status === "chatting" && remoteVideoRef.current && remoteVideoRef.current.readyState === 4) {
+          try {
+            const predictions = await nsfwModel.classify(remoteVideoRef.current);
+            const nsfwClasses = ["Porn", "Hentai", "Sexy"];
+            const isNsfw = predictions.some((p: any) => nsfwClasses.includes(p.className) && p.probability > 0.6);
+            setIsRemoteNsfw(isNsfw);
+          } catch (err) {
+            console.error("Error analyzing remote video", err);
+          }
+        } else {
+          setIsRemoteNsfw(false);
+        }
+
+        // Check local video
+        if (camOn && localVideoRef.current && localVideoRef.current.readyState === 4) {
+          try {
+            const predictions = await nsfwModel.classify(localVideoRef.current);
+            const nsfwClasses = ["Porn", "Hentai", "Sexy"];
+            const isNsfw = predictions.some((p: any) => nsfwClasses.includes(p.className) && p.probability > 0.6);
+            setIsLocalNsfw(isNsfw);
+          } catch (err) {
+            console.error("Error analyzing local video", err);
+          }
+        } else {
+          setIsLocalNsfw(false);
+        }
+      }, 1000); // Check every second
+    }
+    return () => clearInterval(interval);
+  }, [mode, status, camOn, nsfwModel]);
 
   const wsSend = (payload: object) => {
     const ws = wsRef.current;
@@ -229,10 +291,6 @@ function ChatApp() {
     };
   }, [connectWS]);
 
-  const wsSend = (payload: object) => {
-    const ws = wsRef.current;
-    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
-  };
 
   const sys = (text: string): Msg => ({ id: crypto.randomUUID(), from: "system", text });
 
@@ -452,13 +510,27 @@ function ChatApp() {
                     <p className="text-white/50 text-xl font-medium tracking-wide">Connecting you to the perfect match.</p>
                   </motion.div>
                 ) : status === "chatting" ? (
-                  <motion.div key="chatting-video" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center justify-center w-full h-full relative">
+                  <motion.div key="chatting-video" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="flex flex-col items-center justify-center w-full h-full relative overflow-hidden">
                     <video 
                       ref={remoteVideoRef} 
                       autoPlay 
                       playsInline 
-                      className="w-full h-full object-cover" 
+                      className={`w-full h-full object-cover transition-all duration-700 ${isRemoteNsfw ? "blur-[60px] grayscale scale-105" : ""}`} 
                     />
+                    <AnimatePresence>
+                      {isRemoteNsfw && (
+                        <motion.div 
+                          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                          className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40 backdrop-blur-md text-center p-6"
+                        >
+                          <div className="w-24 h-24 rounded-full bg-red-500/20 flex items-center justify-center mb-6 shadow-[0_0_40px_rgba(239,68,68,0.4)]">
+                            <RiAlertFill className="text-6xl text-red-500" />
+                          </div>
+                          <h3 className="text-3xl font-black text-white tracking-tight mb-2">Explicit Content Hidden</h3>
+                          <p className="text-white/70 text-lg max-w-md">We've automatically blurred this video feed to protect you from potentially inappropriate content.</p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </motion.div>
                 ) : (
                   <motion.div key="waiting-video" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center text-center">
@@ -484,15 +556,26 @@ function ChatApp() {
                 autoPlay 
                 playsInline 
                 muted 
-                className={`w-full h-full object-cover transition-opacity duration-300 pointer-events-none ${camOn ? "opacity-100" : "opacity-0"}`} 
+                className={`w-full h-full object-cover transition-all duration-300 pointer-events-none ${(camOn && !isLocalNsfw) ? "opacity-100" : "opacity-0"} ${isLocalNsfw ? "blur-xl" : ""}`} 
               />
-              {!camOn && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center text-white/30 bg-[#07070e] pointer-events-none">
-                  <RiCameraOffLine className="text-5xl mb-4 opacity-50" />
-                  <span className="text-[11px] font-black tracking-widest uppercase">Cam Off</span>
+              {(!camOn || isLocalNsfw) && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-white/30 bg-[#07070e] pointer-events-none text-center p-2 z-10">
+                  {isLocalNsfw ? (
+                    <>
+                      <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-2">
+                        <RiAlertFill className="text-2xl text-red-500 opacity-90" />
+                      </div>
+                      <span className="text-[10px] font-black tracking-widest uppercase text-red-400">NSFW Warning</span>
+                    </>
+                  ) : (
+                    <>
+                      <RiCameraOffLine className="text-5xl mb-4 opacity-50" />
+                      <span className="text-[11px] font-black tracking-widest uppercase">Cam Off</span>
+                    </>
+                  )}
                 </div>
               )}
-              <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest text-white/80 border border-white/10 pointer-events-none">
+              <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest text-white/80 border border-white/10 pointer-events-none z-20">
                 You
               </div>
             </motion.div>
