@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { motion, useMotionValue, useSpring, useTransform, Variants } from "framer-motion";
 import { RiMessage3Line, RiVideoChatLine, RiLockPasswordLine, RiUserSmileLine, RiFlashlightLine } from "react-icons/ri";
 import ParticleBackground from "./components/ParticleBackground";
+import Footer from "./components/Footer";
 
 const TiltCard = ({ children, className }: { children: React.ReactNode, className?: string }) => {
   const x = useMotionValue(0);
@@ -207,6 +208,8 @@ export default function Home() {
         </motion.section>
 
       </main>
+
+      <Footer />
     </div>
   );
 }

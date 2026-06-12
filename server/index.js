@@ -301,6 +301,20 @@ wss.on("connection", (ws) => {
         tryMatch(id);
         break;
 
+      case "report": {
+        const reason = typeof msg.reason === "string" ? msg.reason.substring(0, 200) : "Unknown";
+        console.log(
+          `[report] from=${id.slice(0, 6)} session=${client.sessionId || "none"} ` +
+          `partner=${client.partnerId ? client.partnerId.slice(0, 6) : "none"} ` +
+          `reason="${reason}" ts=${new Date().toISOString()}`
+        );
+        // Auto-skip after reporting
+        detachPartner(id);
+        removeFromQueue(id);
+        tryMatch(id);
+        break;
+      }
+
       case "end":
         detachPartner(id);
         removeFromQueue(id);

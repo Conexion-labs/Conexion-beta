@@ -5,8 +5,16 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import ParticleBackground from "../components/ParticleBackground";
-import { RiMessage3Line, RiVideoChatLine, RiMicLine, RiMicOffLine, RiCameraLine, RiCameraOffLine, RiSendPlaneFill, RiSkipForwardLine, RiCloseCircleLine, RiSearchEyeLine, RiAlertFill, RiShieldCheckLine } from "react-icons/ri";
+import { RiMessage3Line, RiVideoChatLine, RiMicLine, RiMicOffLine, RiCameraLine, RiCameraOffLine, RiSendPlaneFill, RiSkipForwardLine, RiCloseCircleLine, RiSearchEyeLine, RiAlertFill, RiShieldCheckLine, RiFlag2Line, RiChat1Line } from "react-icons/ri";
 import { useNsfwDetection, useNsfwVideoAnalysis } from "../hooks/useNsfwDetection";
+
+const REPORT_REASONS = [
+  "Inappropriate content",
+  "Harassment",
+  "Spam",
+  "Underage user",
+  "Other",
+];
 
 type Status = "idle" | "connecting" | "queued" | "chatting" | "ended";
 type ChatMode = "text" | "video";
@@ -40,6 +48,14 @@ function ChatApp() {
   const [onlineCount, setOnlineCount] = useState(0);
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [wsError, setWsError] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [showVideoChat, setShowVideoChat] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const reconnectAttemptRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxReconnectAttempts = 10;
+  const intentionalCloseRef = useRef(false);
+  const pipContainerRef = useRef<HTMLDivElement>(null);
 
   const endRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -129,7 +145,15 @@ function ChatApp() {
 
   const setupWebRTC = useCallback((role: "caller" | "callee") => {
     if (pcRef.current) pcRef.current.close();
-    const pc = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:global.stun.twilio.com:3478" }] });
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:global.stun.twilio.com:3478" },
+        { urls: "turn:openrelay.metered.ca:80", username: "openrelayproject", credential: "openrelayproject" },
+        { urls: "turn:openrelay.metered.ca:443", username: "openrelayproject", credential: "openrelayproject" },
+        { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelayproject", credential: "openrelayproject" },
+      ],
+    });
     pcRef.current = pc;
 
     if (localStream) {
@@ -156,6 +180,24 @@ function ChatApp() {
     }
   }, [localStream]);
 
+  const scheduleReconnect = useCallback(() => {
+    if (intentionalCloseRef.current) return;
+    if (reconnectAttemptRef.current >= maxReconnectAttempts) {
+      setIsReconnecting(false);
+      setWsError(true);
+      return;
+    }
+    setIsReconnecting(true);
+    const attempt = reconnectAttemptRef.current;
+    const baseDelay = Math.min(1000 * Math.pow(2, attempt), 30000);
+    const jitter = Math.random() * baseDelay * 0.3;
+    const delay = baseDelay + jitter;
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectAttemptRef.current++;
+      connectWS();
+    }, delay);
+  }, []);
+
   const connectWS = useCallback(() => {
     if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
       return wsRef.current;
@@ -167,6 +209,8 @@ function ChatApp() {
 
     ws.onopen = () => {
       setWsError(false);
+      setIsReconnecting(false);
+      reconnectAttemptRef.current = 0;
       pingRef.current = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "ping" }));
       }, 25000);
@@ -236,14 +280,21 @@ function ChatApp() {
     ws.onerror = () => setWsError(true);
     ws.onclose = () => {
       if (pingRef.current) clearInterval(pingRef.current);
-      setWsError(true);
+      if (!intentionalCloseRef.current) {
+        setWsError(true);
+        scheduleReconnect();
+      }
     };
     return ws;
-  }, [mode, setupWebRTC]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, setupWebRTC, scheduleReconnect]);
 
   useEffect(() => {
+    intentionalCloseRef.current = false;
     const ws = connectWS();
     return () => {
+      intentionalCloseRef.current = true;
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       if (pingRef.current) clearInterval(pingRef.current);
       if (pcRef.current) pcRef.current.close();
       ws?.close();
@@ -275,8 +326,22 @@ function ChatApp() {
   };
 
   const stopSearch = () => { wsSend({ type: "cancel" }); setStatus("idle"); setElapsed(0); setMsgs([]); setQueuePosition(null); };
-  const skip = () => { wsSend({ type: "skip" }); setStatus("connecting"); setElapsed(0); setMsgs([]); setSharedInterests([]); setQueuePosition(null); };
-  const endCall = () => { wsSend({ type: "end" }); setStatus("ended"); setMsgs(m => [...m, sys("You disconnected.")]); };
+  const skip = () => { wsSend({ type: "skip" }); setStatus("connecting"); setElapsed(0); setMsgs([]); setSharedInterests([]); setQueuePosition(null); setShowReport(false); };
+  const endCall = () => { wsSend({ type: "end" }); setStatus("ended"); setMsgs(m => [...m, sys("You disconnected.")]); setShowReport(false); };
+
+  const reportUser = (reason: string) => {
+    wsSend({ type: "report", reason });
+    setMsgs(m => [...m, sys("User reported. Finding new match...")]);
+    setShowReport(false);
+    // Auto-skip after a short delay so the system message is visible
+    setTimeout(() => {
+      setStatus("connecting");
+      setElapsed(0);
+      setMsgs([]);
+      setSharedInterests([]);
+      setQueuePosition(null);
+    }, 800);
+  };
 
   const send = () => {
     if (!draft.trim() || status !== "chatting") return;
@@ -294,6 +359,25 @@ function ChatApp() {
       {/* Ambient glows */}
       <div className="pointer-events-none fixed top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-amber-500/5 blur-[120px] mix-blend-screen z-0"></div>
       <div className="pointer-events-none fixed bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-violet-500/5 blur-[140px] mix-blend-screen z-0"></div>
+
+      {/* Reconnection Banner */}
+      <AnimatePresence>
+        {isReconnecting && (
+          <motion.div
+            initial={{ y: -60, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -60, opacity: 0 }}
+            className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-center gap-3 py-3 bg-amber-500/90 text-black font-bold text-sm backdrop-blur-md shadow-[0_4px_20px_rgba(245,158,11,0.4)]"
+          >
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+              className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full"
+            />
+            Reconnecting... (attempt {reconnectAttemptRef.current + 1}/{maxReconnectAttempts})
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Nav */}
       <nav className="nav-bar">
@@ -430,6 +514,32 @@ function ChatApp() {
                       <button className="text-white/40 hover:text-red-500 flex items-center gap-1.5 text-xs font-black uppercase tracking-widest transition-colors" onClick={endCall}>
                         <RiCloseCircleLine className="text-xl" /> End
                       </button>
+                      <div className="relative">
+                        <button className="text-white/40 hover:text-orange-500 flex items-center gap-1.5 text-xs font-black uppercase tracking-widest transition-colors" onClick={() => setShowReport(r => !r)}>
+                          <RiFlag2Line className="text-xl" /> Report
+                        </button>
+                        <AnimatePresence>
+                          {showReport && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                              className="absolute bottom-full left-0 mb-2 w-56 bg-[#0e0e18]/95 backdrop-blur-xl rounded-2xl border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.6)] overflow-hidden z-50"
+                            >
+                              <div className="p-3 border-b border-white/5 text-[10px] font-black uppercase tracking-widest text-white/40">Report Reason</div>
+                              {REPORT_REASONS.map(reason => (
+                                <button
+                                  key={reason}
+                                  onClick={() => reportUser(reason)}
+                                  className="w-full text-left px-4 py-3 text-sm text-white/70 hover:bg-amber-500/10 hover:text-amber-500 transition-colors"
+                                >
+                                  {reason}
+                                </button>
+                              ))}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
                     </div>
                     <div className="flex items-center gap-3 bg-white/5 p-2 pl-6 rounded-3xl focus-within:bg-white/10 transition-colors shadow-inner">
                       <input
@@ -517,10 +627,11 @@ function ChatApp() {
 
             {/* Draggable PiP Local Feed */}
             <motion.div 
+              ref={pipContainerRef}
               drag
-              dragConstraints={{ left: 20, right: 20, top: 120, bottom: 120 }}
+              dragConstraints={pipContainerRef.current ? { left: -(pipContainerRef.current.offsetLeft - 20), right: 20, top: -(pipContainerRef.current.offsetTop - 100), bottom: 120 } : { left: -200, right: 20, top: -200, bottom: 120 }}
               dragElastic={0.1}
-              className="absolute top-28 right-6 w-40 h-56 sm:w-60 sm:h-80 bg-[#0a0a0f] rounded-3xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-30 border border-white/10 cursor-grab active:cursor-grabbing hover:scale-105 transition-transform"
+              className="absolute top-28 right-4 sm:right-6 w-28 h-40 sm:w-60 sm:h-80 bg-[#0a0a0f] rounded-2xl sm:rounded-3xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-30 border border-white/10 cursor-grab active:cursor-grabbing hover:scale-105 transition-transform"
             >
               <video 
                 ref={localVideoRef} 
@@ -533,44 +644,57 @@ function ChatApp() {
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-white/30 bg-[#07070e] pointer-events-none text-center p-2 z-10">
                   {isLocalNsfw ? (
                     <>
-                      <div className="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-2">
-                        <RiAlertFill className="text-2xl text-red-500 opacity-90" />
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-2">
+                        <RiAlertFill className="text-xl sm:text-2xl text-red-500 opacity-90" />
                       </div>
-                      <span className="text-[10px] font-black tracking-widest uppercase text-red-400">NSFW Warning</span>
+                      <span className="text-[9px] sm:text-[10px] font-black tracking-widest uppercase text-red-400">NSFW Warning</span>
                     </>
                   ) : (
                     <>
-                      <RiCameraOffLine className="text-5xl mb-4 opacity-50" />
-                      <span className="text-[11px] font-black tracking-widest uppercase">Cam Off</span>
+                      <RiCameraOffLine className="text-3xl sm:text-5xl mb-2 sm:mb-4 opacity-50" />
+                      <span className="text-[9px] sm:text-[11px] font-black tracking-widest uppercase">Cam Off</span>
                     </>
                   )}
                 </div>
               )}
-              <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest text-white/80 border border-white/10 pointer-events-none z-20">
+              <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 bg-black/60 backdrop-blur-md px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-white/80 border border-white/10 pointer-events-none z-20">
                 You
               </div>
             </motion.div>
+
+            {/* Mobile Chat Sidebar Toggle */}
+            {status === "chatting" && (
+              <button
+                onClick={() => setShowVideoChat(v => !v)}
+                className="absolute top-28 left-4 z-30 md:hidden w-11 h-11 bg-black/60 backdrop-blur-xl rounded-full flex items-center justify-center border border-white/10 shadow-lg text-amber-500 hover:bg-amber-500/20 transition-colors"
+              >
+                <RiChat1Line className="text-lg" />
+              </button>
+            )}
 
             {/* Beautiful Integrated Chat Sidebar */}
             <AnimatePresence>
               {status === "chatting" && (
                 <motion.div 
                   initial={{ opacity: 0, x: -50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }}
-                  className="absolute left-6 top-28 bottom-32 w-72 sm:w-80 bg-black/40 backdrop-blur-3xl rounded-[32px] border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-20 flex flex-col overflow-hidden"
+                  className={`absolute left-4 sm:left-6 top-28 bottom-32 w-[calc(100vw-2rem)] sm:w-72 md:w-80 bg-black/40 backdrop-blur-3xl rounded-[28px] sm:rounded-[32px] border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-20 flex flex-col overflow-hidden transition-transform duration-300 ${showVideoChat ? "translate-x-0" : "-translate-x-[120%] md:translate-x-0"}`}
                 >
-                  <div className="p-5 border-b border-white/5 bg-white/[0.02]">
-                    <h3 className="font-black text-lg tracking-tight flex items-center gap-2"><RiMessage3Line className="text-amber-500" /> Live Chat</h3>
+                  <div className="p-4 sm:p-5 border-b border-white/5 bg-white/[0.02] flex items-center justify-between">
+                    <h3 className="font-black text-base sm:text-lg tracking-tight flex items-center gap-2"><RiMessage3Line className="text-amber-500" /> Live Chat</h3>
+                    <button onClick={() => setShowVideoChat(false)} className="md:hidden text-white/40 hover:text-white transition-colors">
+                      <RiCloseCircleLine className="text-xl" />
+                    </button>
                   </div>
-                  <div className="flex-1 overflow-y-auto p-4 sm:p-5 flex flex-col gap-4">
+                  <div className="flex-1 overflow-y-auto p-3 sm:p-5 flex flex-col gap-3 sm:gap-4">
                     {msgs.map(m => (
-                      <div key={m.id} className={`text-sm px-4 py-3 rounded-2xl max-w-[90%] shadow-lg ${m.from === "system" ? "self-center text-amber-500 text-[10px] font-black uppercase tracking-widest bg-amber-500/10 border border-amber-500/20" : m.from === "me" ? "self-end bg-amber-500 text-black font-semibold rounded-tr-sm" : "self-start bg-white/10 text-white rounded-tl-sm border border-white/5"}`}>
+                      <div key={m.id} className={`text-sm px-3 sm:px-4 py-2.5 sm:py-3 rounded-2xl max-w-[90%] shadow-lg ${m.from === "system" ? "self-center text-amber-500 text-[10px] font-black uppercase tracking-widest bg-amber-500/10 border border-amber-500/20" : m.from === "me" ? "self-end bg-amber-500 text-black font-semibold rounded-tr-sm" : "self-start bg-white/10 text-white rounded-tl-sm border border-white/5"}`}>
                         {m.text}
                       </div>
                     ))}
                     <div ref={endRef} />
                   </div>
-                  <div className="p-4 bg-black/40 border-t border-white/5">
-                    <div className="flex items-center gap-2 bg-white/5 p-1.5 pl-4 rounded-2xl focus-within:bg-white/10 transition-colors border border-white/5">
+                  <div className="p-3 sm:p-4 bg-black/40 border-t border-white/5">
+                    <div className="flex items-center gap-2 bg-white/5 p-1.5 pl-3 sm:pl-4 rounded-2xl focus-within:bg-white/10 transition-colors border border-white/5">
                       <input 
                         className="flex-1 bg-transparent border-none outline-none text-white placeholder-white/30 text-sm w-full" 
                         placeholder="Type message..." 
@@ -578,7 +702,7 @@ function ChatApp() {
                         onChange={e => setDraft(e.target.value)} 
                         onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }} 
                       />
-                      <button className={`w-10 h-10 shrink-0 flex items-center justify-center rounded-xl transition-all ${draft.trim() ? "bg-amber-500 text-black shadow-[0_0_20px_rgba(245,158,11,0.4)] hover:scale-105" : "bg-white/5 text-white/30 cursor-not-allowed"}`} onClick={send} disabled={!draft.trim()}>
+                      <button className={`w-9 h-9 sm:w-10 sm:h-10 shrink-0 flex items-center justify-center rounded-xl transition-all ${draft.trim() ? "bg-amber-500 text-black shadow-[0_0_20px_rgba(245,158,11,0.4)] hover:scale-105" : "bg-white/5 text-white/30 cursor-not-allowed"}`} onClick={send} disabled={!draft.trim()}>
                         <RiSendPlaneFill className="ml-0.5" />
                       </button>
                     </div>
@@ -588,36 +712,62 @@ function ChatApp() {
             </AnimatePresence>
 
             {/* Central Controls Dock (Floating Over Video) */}
-            <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 sm:gap-6 bg-black/60 backdrop-blur-3xl px-6 py-4 sm:px-8 sm:py-5 rounded-[40px] border border-white/10 shadow-[0_30px_60px_rgba(0,0,0,0.8)] z-40 w-max max-w-full overflow-x-auto">
-              <button className={`w-12 h-12 sm:w-14 sm:h-14 shrink-0 rounded-full flex items-center justify-center text-xl sm:text-2xl transition-all ${micOn ? "bg-white/10 hover:bg-white/20 text-white" : "bg-red-500/20 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.3)]"}`} onClick={() => setMicOn(!micOn)}>
+            <div className="absolute bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2 sm:gap-4 md:gap-6 bg-black/60 backdrop-blur-3xl px-3 py-3 sm:px-6 sm:py-4 md:px-8 md:py-5 rounded-full sm:rounded-[40px] border border-white/10 shadow-[0_30px_60px_rgba(0,0,0,0.8)] z-40 w-max max-w-[96vw] overflow-x-auto">
+              <button className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 shrink-0 rounded-full flex items-center justify-center text-lg sm:text-xl md:text-2xl transition-all ${micOn ? "bg-white/10 hover:bg-white/20 text-white" : "bg-red-500/20 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.3)]"}`} onClick={() => setMicOn(!micOn)}>
                 {micOn ? <RiMicLine /> : <RiMicOffLine />}
               </button>
-              <button className={`w-12 h-12 sm:w-14 sm:h-14 shrink-0 rounded-full flex items-center justify-center text-xl sm:text-2xl transition-all ${camOn ? "bg-white/10 hover:bg-white/20 text-white" : "bg-red-500/20 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.3)]"}`} onClick={() => setCamOn(!camOn)}>
+              <button className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 shrink-0 rounded-full flex items-center justify-center text-lg sm:text-xl md:text-2xl transition-all ${camOn ? "bg-white/10 hover:bg-white/20 text-white" : "bg-red-500/20 text-red-500 shadow-[0_0_15px_rgba(239,68,68,0.3)]"}`} onClick={() => setCamOn(!camOn)}>
                 {camOn ? <RiCameraLine /> : <RiCameraOffLine />}
               </button>
               
-              <div className="w-px h-8 bg-white/20 shrink-0" />
+              <div className="w-px h-6 sm:h-8 bg-white/20 shrink-0" />
 
               {status === "idle" && (
-                <button className="btn-primary py-3 px-6 sm:py-4 sm:px-8 rounded-full text-sm sm:text-lg whitespace-nowrap shadow-[0_0_30px_rgba(245,158,11,0.3)] hover:shadow-[0_0_40px_rgba(245,158,11,0.5)]" onClick={startSearch}>Start Video Chat</button>
+                <button className="btn-primary py-2.5 px-4 sm:py-3 sm:px-6 md:py-4 md:px-8 rounded-full text-xs sm:text-sm md:text-lg whitespace-nowrap shadow-[0_0_30px_rgba(245,158,11,0.3)] hover:shadow-[0_0_40px_rgba(245,158,11,0.5)]" onClick={startSearch}>Start Video Chat</button>
               )}
               {isSearching && (
-                <button className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 sm:py-4 sm:px-8 rounded-full flex items-center gap-2 transition-colors shadow-[0_0_30px_rgba(239,68,68,0.4)] whitespace-nowrap" onClick={stopSearch}>
-                  <RiCloseCircleLine className="text-xl shrink-0" /> Cancel Search
+                <button className="bg-red-500 hover:bg-red-600 text-white font-bold py-2.5 px-4 sm:py-3 sm:px-6 md:py-4 md:px-8 rounded-full flex items-center gap-1.5 sm:gap-2 transition-colors shadow-[0_0_30px_rgba(239,68,68,0.4)] whitespace-nowrap text-xs sm:text-sm md:text-base" onClick={stopSearch}>
+                  <RiCloseCircleLine className="text-lg sm:text-xl shrink-0" /> Cancel
                 </button>
               )}
               {status === "chatting" && (
                 <>
-                  <button className="bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 font-bold py-3 px-6 sm:py-4 sm:px-8 rounded-full flex items-center gap-2 transition-colors whitespace-nowrap" onClick={skip}>
-                    <RiSkipForwardLine className="text-xl shrink-0" /> Skip
+                  <button className="bg-amber-500/20 text-amber-500 hover:bg-amber-500/30 font-bold py-2.5 px-4 sm:py-3 sm:px-6 md:py-4 md:px-8 rounded-full flex items-center gap-1.5 sm:gap-2 transition-colors whitespace-nowrap text-xs sm:text-sm md:text-base" onClick={skip}>
+                    <RiSkipForwardLine className="text-lg sm:text-xl shrink-0" /> Skip
                   </button>
-                  <button className="bg-red-500/20 text-red-500 hover:bg-red-500/30 font-bold py-3 px-6 sm:py-4 sm:px-8 rounded-full flex items-center gap-2 transition-colors whitespace-nowrap shadow-[0_0_20px_rgba(239,68,68,0.2)]" onClick={endCall}>
-                    <RiCloseCircleLine className="text-xl shrink-0" /> End Call
+                  <div className="relative">
+                    <button className="bg-orange-500/20 text-orange-500 hover:bg-orange-500/30 font-bold py-2.5 px-4 sm:py-3 sm:px-6 md:py-4 md:px-8 rounded-full flex items-center gap-1.5 sm:gap-2 transition-colors whitespace-nowrap text-xs sm:text-sm md:text-base" onClick={() => setShowReport(r => !r)}>
+                      <RiFlag2Line className="text-lg sm:text-xl shrink-0" /> Report
+                    </button>
+                    <AnimatePresence>
+                      {showReport && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-3 w-56 bg-[#0e0e18]/95 backdrop-blur-xl rounded-2xl border border-white/10 shadow-[0_10px_40px_rgba(0,0,0,0.6)] overflow-hidden z-50"
+                        >
+                          <div className="p-3 border-b border-white/5 text-[10px] font-black uppercase tracking-widest text-white/40">Report Reason</div>
+                          {REPORT_REASONS.map(reason => (
+                            <button
+                              key={reason}
+                              onClick={() => reportUser(reason)}
+                              className="w-full text-left px-4 py-3 text-sm text-white/70 hover:bg-amber-500/10 hover:text-amber-500 transition-colors"
+                            >
+                              {reason}
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                  <button className="bg-red-500/20 text-red-500 hover:bg-red-500/30 font-bold py-2.5 px-4 sm:py-3 sm:px-6 md:py-4 md:px-8 rounded-full flex items-center gap-1.5 sm:gap-2 transition-colors whitespace-nowrap shadow-[0_0_20px_rgba(239,68,68,0.2)] text-xs sm:text-sm md:text-base" onClick={endCall}>
+                    <RiCloseCircleLine className="text-lg sm:text-xl shrink-0" /> End
                   </button>
                 </>
               )}
               {status === "ended" && (
-                <button className="btn-primary py-3 px-6 sm:py-4 sm:px-8 rounded-full text-sm sm:text-lg whitespace-nowrap shadow-[0_0_30px_rgba(245,158,11,0.3)]" onClick={startSearch}>New Call</button>
+                <button className="btn-primary py-2.5 px-4 sm:py-3 sm:px-6 md:py-4 md:px-8 rounded-full text-xs sm:text-sm md:text-lg whitespace-nowrap shadow-[0_0_30px_rgba(245,158,11,0.3)]" onClick={startSearch}>New Call</button>
               )}
             </div>
           </motion.div>
@@ -629,12 +779,12 @@ function ChatApp() {
         {showTags && (
           <motion.div 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md overflow-y-auto"
             onClick={(e) => e.target === e.currentTarget && setShowTags(false)}
           >
             <motion.div 
               initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }}
-              className="bg-white/[0.02] backdrop-blur-3xl p-6 sm:p-10 rounded-[40px] w-full max-w-xl shadow-[0_10px_50px_rgba(0,0,0,0.8)] relative overflow-hidden"
+              className="bg-white/[0.02] backdrop-blur-3xl p-6 sm:p-10 rounded-[28px] sm:rounded-[40px] w-full max-w-xl shadow-[0_10px_50px_rgba(0,0,0,0.8)] relative overflow-hidden my-auto max-h-[90vh] overflow-y-auto"
             >
               <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/10 rounded-full blur-[100px] -mr-20 -mt-20 pointer-events-none" />
               
@@ -680,9 +830,45 @@ function ChatApp() {
   );
 }
 
+function ChatLoadingFallback() {
+  return (
+    <div className="relative min-h-screen w-full flex flex-col items-center justify-center bg-[#07070e] text-white overflow-hidden">
+      {/* Ambient glows */}
+      <div className="pointer-events-none fixed top-[-10%] left-[-10%] w-[50vw] h-[50vw] rounded-full bg-amber-500/5 blur-[120px] mix-blend-screen z-0"></div>
+      <div className="pointer-events-none fixed bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-violet-500/5 blur-[140px] mix-blend-screen z-0"></div>
+
+      <div className="relative z-10 flex flex-col items-center gap-8">
+        {/* Branding */}
+        <div className="text-3xl sm:text-4xl font-black tracking-tight">
+          Cone<span className="text-amber-500">x</span>ion
+        </div>
+
+        {/* Pulse Spinner */}
+        <div className="relative w-20 h-20 flex items-center justify-center">
+          <div className="absolute inset-0 rounded-full border-2 border-amber-500/30 animate-ping" style={{ animationDuration: '2s' }} />
+          <div className="absolute inset-2 rounded-full border-2 border-amber-500/20 animate-ping" style={{ animationDuration: '2s', animationDelay: '0.4s' }} />
+          <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shadow-[0_0_30px_rgba(245,158,11,0.3)]">
+            <div className="w-5 h-5 rounded-full border-2 border-amber-500/40 border-t-amber-500 animate-spin" />
+          </div>
+        </div>
+
+        {/* Loading text */}
+        <div className="flex flex-col items-center gap-2">
+          <p className="text-white/40 text-sm font-bold uppercase tracking-[0.3em] animate-pulse">Loading</p>
+          <div className="flex gap-1.5">
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-500/60 animate-bounce" style={{ animationDelay: '0s' }} />
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-500/60 animate-bounce" style={{ animationDelay: '0.15s' }} />
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-500/60 animate-bounce" style={{ animationDelay: '0.3s' }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ChatPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<ChatLoadingFallback />}>
       <ChatApp />
     </Suspense>
   );
