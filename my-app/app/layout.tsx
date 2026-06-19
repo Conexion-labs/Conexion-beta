@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Playfair_Display, Inter } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const playfair = Playfair_Display({
+  variable: "--font-playfair",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -27,13 +31,9 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      <body className="antialiased bg-[#07070e] text-white min-h-screen flex flex-col font-sans relative overflow-x-hidden">
-        {/* Ambient Glows */}
-        <div className="pointer-events-none fixed top-0 left-[-10%] w-[50vw] h-[50vw] rounded-full bg-amber-500/10 blur-[120px] mix-blend-screen z-0"></div>
-        <div className="pointer-events-none fixed bottom-[-10%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-violet-500/10 blur-[140px] mix-blend-screen z-0"></div>
-        <div className="pointer-events-none fixed top-[40%] right-[20%] w-[30vw] h-[30vw] rounded-full bg-cyan-500/5 blur-[100px] mix-blend-screen z-0"></div>
-        
+    <html lang="en" className={`${playfair.variable} ${inter.variable}`}>
+      <body className="antialiased min-h-screen flex flex-col font-sans relative overflow-x-hidden"
+        style={{ backgroundColor: "var(--color-ivory)", color: "var(--color-charcoal)" }}>
         <div className="relative z-10 flex flex-col flex-1">
           {children}
         </div>

@@ -32,6 +32,15 @@ export default function ParticleBackground() {
       initParticles();
     };
 
+    // Warm earthy particle colors — subtle, editorial
+    const PARTICLE_COLORS = [
+      "rgba(110, 103, 98, 0.18)",   // gray-brown
+      "rgba(158, 152, 146, 0.12)",  // gray-light
+      "rgba(176, 161, 142, 0.14)",  // warm sand
+      "rgba(124, 140, 101, 0.10)", // olive
+      "rgba(107, 135, 160, 0.10)", // muted blue
+    ];
+
     class Particle {
       x: number;
       y: number;
@@ -47,10 +56,10 @@ export default function ParticleBackground() {
         this.y = Math.random() * canvas!.height;
         this.baseX = this.x;
         this.baseY = this.y;
-        this.vx = (Math.random() - 0.5) * 0.6;
-        this.vy = (Math.random() - 0.5) * 0.6;
-        this.size = Math.random() * 2 + 0.5;
-        this.color = Math.random() > 0.8 ? "rgba(251, 191, 36, 0.4)" : "rgba(255, 255, 255, 0.2)";
+        this.vx = (Math.random() - 0.5) * 0.3;
+        this.vy = (Math.random() - 0.5) * 0.3;
+        this.size = Math.random() * 1.5 + 0.4;
+        this.color = PARTICLE_COLORS[Math.floor(Math.random() * PARTICLE_COLORS.length)];
       }
 
       update() {
@@ -60,18 +69,16 @@ export default function ParticleBackground() {
         if (this.x < 0 || this.x > canvas!.width) this.vx *= -1;
         if (this.y < 0 || this.y > canvas!.height) this.vy *= -1;
 
-        // Mouse interaction
+        // Gentle mouse repulsion
         const dx = mouse.x - this.x;
         const dy = mouse.y - this.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const maxDist = 150;
+        const maxDist = 120;
 
         if (dist < maxDist) {
           const force = (maxDist - dist) / maxDist;
-          this.x -= (dx / dist) * force * 2;
-          this.y -= (dy / dist) * force * 2;
-        } else {
-           // Gently pull back towards moving trajectory if we wanted, but standard bounce is fine.
+          this.x -= (dx / dist) * force * 1.5;
+          this.y -= (dy / dist) * force * 1.5;
         }
       }
 
@@ -86,7 +93,7 @@ export default function ParticleBackground() {
 
     const initParticles = () => {
       particles = [];
-      const numParticles = Math.min(120, Math.floor((canvas.width * canvas.height) / 12000));
+      const numParticles = Math.min(90, Math.floor((canvas.width * canvas.height) / 16000));
       for (let i = 0; i < numParticles; i++) {
         particles.push(new Particle());
       }
@@ -94,7 +101,7 @@ export default function ParticleBackground() {
 
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
+
       for (let i = 0; i < particles.length; i++) {
         particles[i].update();
         particles[i].draw();
@@ -104,9 +111,9 @@ export default function ParticleBackground() {
           const dy = particles[i].y - particles[j].y;
           const dist = Math.sqrt(dx * dx + dy * dy);
 
-          if (dist < 120) {
+          if (dist < 110) {
             ctx.beginPath();
-            ctx.strokeStyle = `rgba(255, 255, 255, ${0.1 - dist / 1200})`;
+            ctx.strokeStyle = `rgba(110, 103, 98, ${0.07 - dist / 1700})`;
             ctx.lineWidth = 0.5;
             ctx.moveTo(particles[i].x, particles[i].y);
             ctx.lineTo(particles[j].x, particles[j].y);
@@ -121,7 +128,7 @@ export default function ParticleBackground() {
     window.addEventListener("resize", resize);
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseleave", handleMouseLeave);
-    
+
     resize();
     animate();
 
@@ -136,7 +143,7 @@ export default function ParticleBackground() {
   return (
     <canvas
       ref={canvasRef}
-      className="fixed inset-0 pointer-events-none z-0 opacity-60"
+      className="fixed inset-0 pointer-events-none z-0 opacity-70"
     />
   );
 }
