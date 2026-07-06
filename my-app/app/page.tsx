@@ -60,6 +60,140 @@ const FadeUpText = ({ text, delay = 0 }: { text: string; delay?: number }) => {
   );
 };
 
+// --- New Graphics Components ---
+
+const ArchitectureGraphic = () => {
+  return (
+    <div className="absolute inset-0 bg-gradient-to-tr from-[rgba(124,140,101,0.05)] to-[rgba(107,135,160,0.05)] flex items-center justify-center overflow-hidden group">
+      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay" />
+      
+      {/* Floating Glass Nodes */}
+      {[...Array(4)].map((_, i) => (
+        <motion.div
+          key={i}
+          className="absolute rounded-3xl border border-white/30 bg-white/20 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.05)] flex items-center justify-center overflow-hidden"
+          style={{
+            width: 140 + i * 40,
+            height: 140 + i * 40,
+            zIndex: 10 - i
+          }}
+          animate={{
+            rotate: [0, 360],
+            scale: [1, 1.05, 1],
+            borderRadius: ['25%', '35%', '25%']
+          }}
+          transition={{
+            rotate: { duration: 25 + i * 5, repeat: Infinity, ease: "linear", direction: i % 2 === 0 ? "normal" : "reverse" },
+            scale: { duration: 5 + i, repeat: Infinity, ease: "easeInOut" }
+          }}
+        >
+           <div className="w-full h-full bg-gradient-to-br from-white/40 to-transparent mix-blend-overlay" />
+        </motion.div>
+      ))}
+      
+      {/* Center Icon */}
+      <div className="relative z-20 w-20 h-20 bg-white/60 backdrop-blur-2xl rounded-2xl flex items-center justify-center shadow-xl border border-white/50 group-hover:scale-110 transition-transform duration-700 ease-out">
+        <RiFlashlightLine className="text-4xl text-[var(--color-charcoal)]" />
+      </div>
+    </div>
+  );
+};
+
+const CurationGraphic = () => {
+  const tags = ["Philosophy", "Jazz", "Cinema", "Architecture", "Literature", "Art", "Design", "Physics"];
+  return (
+    <div className="absolute inset-0 bg-gradient-to-bl from-[rgba(212,145,106,0.05)] to-[rgba(124,140,101,0.05)] flex items-center justify-center overflow-hidden group">
+      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay pointer-events-none" />
+
+      {/* Glowing orbs */}
+      <motion.div 
+        animate={{ x: [-40, 40, -40], y: [-40, 40, -40], scale: [1, 1.2, 1] }}
+        transition={{ duration: 12, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute w-[120%] h-[120%] max-w-[500px] max-h-[500px] bg-[var(--color-peach)]/10 rounded-full blur-[80px]"
+      />
+      <motion.div 
+        animate={{ x: [40, -40, 40], y: [40, -40, 40], scale: [1.2, 1, 1.2] }}
+        transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
+        className="absolute w-[100%] h-[100%] max-w-[400px] max-h-[400px] bg-[var(--color-olive)]/10 rounded-full blur-[60px]"
+      />
+      
+      {/* Floating tags */}
+      <div className="relative w-full h-full flex items-center justify-center">
+        {tags.map((tag, i) => {
+          const angle = (i / tags.length) * Math.PI * 2;
+          const radius = 120 + ((i * 37) % 60);
+          return (
+            <motion.div
+              key={tag}
+              className="absolute px-5 py-2.5 rounded-full border border-white/40 bg-white/40 backdrop-blur-xl shadow-[0_8px_32px_rgba(0,0,0,0.05)] text-sm text-[var(--color-charcoal)] font-semibold whitespace-nowrap hover:bg-white/70 transition-colors cursor-default"
+              initial={{ x: Math.cos(angle) * radius, y: Math.sin(angle) * radius }}
+              animate={{ 
+                x: [Math.cos(angle) * radius, Math.cos(angle + 1) * radius, Math.cos(angle) * radius],
+                y: [Math.sin(angle) * radius, Math.sin(angle + 1) * radius, Math.sin(angle) * radius],
+              }}
+              transition={{ duration: 20 + i * 3, repeat: Infinity, ease: "easeInOut" }}
+              whileHover={{ scale: 1.1, zIndex: 50 }}
+            >
+              {tag}
+            </motion.div>
+          );
+        })}
+        <div className="absolute z-10 w-24 h-24 rounded-full bg-white/80 backdrop-blur-2xl shadow-2xl flex items-center justify-center border border-white/50 group-hover:scale-110 transition-transform duration-700">
+           <RiUserSmileLine className="text-4xl text-[var(--color-charcoal)]" />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const SecrecyGraphic = () => {
+  return (
+    <div className="absolute inset-0 bg-[var(--color-charcoal)] flex items-center justify-center overflow-hidden group">
+      <div className="absolute inset-0 opacity-20 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] mix-blend-overlay pointer-events-none" />
+      
+      {/* Dynamic Rings */}
+      {[...Array(3)].map((_, i) => (
+        <motion.div 
+          key={i}
+          animate={{ scale: [1, 1.5 + i * 0.2, 1], opacity: [0.1, 0, 0.1], rotate: [0, 180, 360] }}
+          transition={{ duration: 4 + i, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute w-48 h-48 rounded-full border border-[var(--color-ivory)]/20"
+          style={{ borderStyle: i % 2 === 0 ? 'dashed' : 'solid' }}
+        />
+      ))}
+      
+      {/* Black Hole Core */}
+      <div className="relative w-40 h-40 rounded-full bg-black/90 shadow-[0_0_80px_40px_rgba(0,0,0,0.9)] border border-white/10 flex items-center justify-center overflow-hidden z-10 group-hover:shadow-[0_0_100px_50px_rgba(0,0,0,1)] transition-shadow duration-700">
+         {/* Absorbing particles */}
+         {[...Array(15)].map((_, i) => (
+           <motion.div
+             key={i}
+             className="absolute w-1 h-1 bg-[var(--color-ivory)] rounded-full blur-[1px]"
+             initial={{ 
+               x: (((i * 73) % 200) - 100), 
+               y: (((i * 97) % 200) - 100),
+               opacity: 0
+             }}
+             animate={{ 
+               x: 0, 
+               y: 0,
+               opacity: [0, 0.8, 0],
+               scale: [1, 0]
+             }}
+             transition={{ 
+               duration: 1.5 + ((i * 11) % 20) / 10, 
+               repeat: Infinity, 
+               delay: ((i * 13) % 20) / 10,
+               ease: "easeIn"
+             }}
+           />
+         ))}
+         <RiLockPasswordLine className="text-4xl text-[var(--color-gray-light)] z-20 group-hover:text-[var(--color-ivory)] group-hover:scale-110 transition-all duration-700" />
+      </div>
+    </div>
+  );
+};
+
 export default function Home() {
   const [onlineCount, setOnlineCount] = useState<number | null>(null);
   const containerRef = useRef(null);
@@ -203,19 +337,8 @@ export default function Home() {
         {/* ── Feature 1: The Canvas ── */}
         <section className="min-h-[80vh] flex items-center py-20 px-6 md:px-16 w-full max-w-7xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-24 items-center">
-            <div className="order-2 lg:order-1 relative h-[500px] w-full rounded-[2rem] overflow-hidden warm-panel flex items-center justify-center group">
-              <div className="absolute inset-0 bg-gradient-to-tr from-[rgba(124,140,101,0.05)] to-[rgba(107,135,160,0.05)]" />
-              <motion.div 
-                whileInView={{ rotate: [0, 5, 0], scale: [0.95, 1.05, 0.95] }}
-                transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-                className="w-64 h-64 rounded-full border border-[var(--color-border)] opacity-20"
-              />
-              <motion.div 
-                whileInView={{ rotate: [0, -5, 0], scale: [1.05, 0.95, 1.05] }}
-                transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-                className="absolute w-80 h-80 rounded-full border border-[var(--color-border)] opacity-10"
-              />
-              <RiFlashlightLine className="absolute text-8xl text-[var(--color-gray-light)] opacity-20 group-hover:scale-110 group-hover:text-[var(--color-charcoal)] transition-all duration-700 ease-out" />
+            <div className="order-2 lg:order-1 relative h-[500px] w-full rounded-[2rem] overflow-hidden warm-panel p-0 border-[var(--color-border)] shadow-xl group">
+              <ArchitectureGraphic />
             </div>
             
             <div className="order-1 lg:order-2 space-y-8">
@@ -260,26 +383,8 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="relative h-[500px] w-full rounded-[2rem] overflow-hidden warm-panel flex items-center justify-center group">
-              <div className="absolute inset-0 bg-gradient-to-bl from-[rgba(212,145,106,0.05)] to-[rgba(124,140,101,0.05)]" />
-              <div className="flex flex-col gap-4">
-                <motion.div 
-                  whileInView={{ x: [-20, 20, -20] }}
-                  transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-                  className="w-48 h-16 rounded-2xl bg-white/40 border border-[var(--color-border)] backdrop-blur-sm"
-                />
-                <motion.div 
-                  whileInView={{ x: [20, -20, 20] }}
-                  transition={{ duration: 9, repeat: Infinity, ease: "easeInOut" }}
-                  className="w-56 h-16 rounded-2xl bg-white/60 border border-[var(--color-border)] backdrop-blur-sm ml-8"
-                />
-                <motion.div 
-                  whileInView={{ x: [-10, 10, -10] }}
-                  transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
-                  className="w-40 h-16 rounded-2xl bg-white/30 border border-[var(--color-border)] backdrop-blur-sm ml-4"
-                />
-              </div>
-              <RiUserSmileLine className="absolute text-8xl text-[var(--color-gray-light)] opacity-20 group-hover:scale-110 group-hover:text-[var(--color-charcoal)] transition-all duration-700 ease-out" />
+            <div className="relative h-[500px] w-full rounded-[2rem] overflow-hidden warm-panel p-0 border-[var(--color-border)] shadow-xl group">
+              <CurationGraphic />
             </div>
           </div>
         </section>
@@ -287,14 +392,8 @@ export default function Home() {
         {/* ── Feature 3: The Void ── */}
         <section className="min-h-[80vh] flex items-center py-20 px-6 md:px-16 w-full max-w-7xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 lg:gap-24 items-center">
-            <div className="order-2 lg:order-1 relative h-[500px] w-full rounded-[2rem] overflow-hidden bg-[var(--color-charcoal)] flex items-center justify-center group transition-shadow hover:shadow-2xl">
-              <div className="absolute inset-0 opacity-20 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] mix-blend-overlay" />
-              <motion.div 
-                whileInView={{ scale: [1, 1.2, 1], opacity: [0.1, 0.3, 0.1] }}
-                transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-                className="w-64 h-64 rounded-full bg-[var(--color-ivory)] blur-3xl absolute"
-              />
-              <RiLockPasswordLine className="relative z-10 text-8xl text-[var(--color-ivory)] opacity-50 group-hover:scale-110 group-hover:opacity-100 transition-all duration-700 ease-out" />
+            <div className="order-2 lg:order-1 relative h-[500px] w-full rounded-[2rem] overflow-hidden shadow-2xl group border border-transparent hover:border-[var(--color-charcoal-80)] transition-colors duration-500">
+              <SecrecyGraphic />
             </div>
 
             <div className="order-1 lg:order-2 space-y-8">
@@ -306,8 +405,8 @@ export default function Home() {
               <p className="text-lg text-[var(--color-gray-brown)] leading-relaxed font-light max-w-md">
                 Once a connection is severed, it dissolves into the ether. No logs, no history, no archives. What is said in the room, stays in the room—until the room ceases to exist.
               </p>
-              <Link href="/privacy" className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--color-charcoal)] hover:text-[var(--color-peach)] transition-colors">
-                Read our Privacy Manifesto <RiArrowRightLine />
+              <Link href="/privacy" className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--color-charcoal)] hover:text-[var(--color-peach)] transition-colors group">
+                Read our Privacy Manifesto <RiArrowRightLine className="group-hover:translate-x-1 transition-transform" />
               </Link>
             </div>
           </div>

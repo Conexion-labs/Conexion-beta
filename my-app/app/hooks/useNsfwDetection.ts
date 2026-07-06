@@ -4,11 +4,15 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 /**
  * NSFW Detection categories returned by nsfwjs.
- * We flag "Porn", "Hentai", and "Sexy" as potentially NSFW.
+ * We use specific thresholds per class to reduce false positives,
+ * as 'Sexy' is notoriously over-sensitive on normal clothing.
  */
-const NSFW_CLASSES = ["Porn", "Hentai", "Sexy"];
-const NSFW_THRESHOLD = 0.6;
-const ANALYSIS_INTERVAL_MS = 1500; // Check every 1.5 seconds to balance accuracy and performance
+const CLASS_THRESHOLDS: Record<string, number> = {
+  Porn: 0.80,
+  Hentai: 0.80,
+  Sexy: 0.95, // Require extremely high confidence for 'Sexy'
+};
+const ANALYSIS_INTERVAL_MS = 1000; // Check every 1 second to balance accuracy and performance
 
 interface NsfwPrediction {
   className: string;
@@ -17,21 +21,28 @@ interface NsfwPrediction {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type NsfwModel = any;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type MobileNetModel = any;
+
+interface LoadedModels {
+  nsfw: NsfwModel;
+  mobilenet: MobileNetModel;
+}
 
 /**
- * Singleton model loader — loads nsfwjs model only once across all hook instances
+ * Singleton model loader — loads nsfwjs and mobilenet only once across all hook instances
  * and reuses the same promise/model reference.
  */
-let modelPromise: Promise<NsfwModel> | null = null;
-let loadedModel: NsfwModel | null = null;
+let modelPromise: Promise<LoadedModels> | null = null;
+let loadedModels: LoadedModels | null = null;
 
-async function loadNsfwModel(): Promise<NsfwModel> {
-  if (loadedModel) return loadedModel;
+async function loadNsfwModel(): Promise<LoadedModels> {
+  if (loadedModels) return loadedModels;
   if (modelPromise) return modelPromise;
 
   modelPromise = (async () => {
     try {
-      // Dynamically import TensorFlow.js and nsfwjs to keep bundle small
+      // Dynamically import TensorFlow.js, nsfwjs and mobilenet to keep bundle small
       // and only load on the client side
       const tf = await import("@tensorflow/tfjs");
 
@@ -46,12 +57,18 @@ async function loadNsfwModel(): Promise<NsfwModel> {
       }
 
       const nsfwjs = await import("nsfwjs");
-      const model = await nsfwjs.load();
-      loadedModel = model;
-      console.log("[NSFW] Model loaded successfully");
-      return model;
+      const mobilenet = await import("@tensorflow-models/mobilenet");
+
+      const [nsfwModel, mnModel] = await Promise.all([
+        nsfwjs.load(),
+        mobilenet.load({ version: 2, alpha: 1.0 })
+      ]);
+      
+      loadedModels = { nsfw: nsfwModel, mobilenet: mnModel };
+      console.log("[NSFW/Substances] Models loaded successfully");
+      return loadedModels;
     } catch (err) {
-      console.error("[NSFW] Failed to load model:", err);
+      console.error("[NSFW/Substances] Failed to load models:", err);
       modelPromise = null; // Allow retry on next call
       throw err;
     }
@@ -85,9 +102,9 @@ interface UseNsfwDetectionReturn {
 export function useNsfwDetection({
   enabled,
 }: UseNsfwDetectionOptions): UseNsfwDetectionReturn {
-  const [modelLoaded, setModelLoaded] = useState(!!loadedModel);
+  const [modelLoaded, setModelLoaded] = useState(!!loadedModels);
   const [modelLoading, setModelLoading] = useState(false);
-  const modelRef = useRef<NsfwModel | null>(loadedModel);
+  const modelRef = useRef<LoadedModels | null>(loadedModels);
 
   // Load model when enabled
   useEffect(() => {
@@ -123,8 +140,8 @@ export function useNsfwDetection({
     async (
       element: HTMLVideoElement | HTMLImageElement | HTMLCanvasElement
     ): Promise<boolean> => {
-      const model = modelRef.current;
-      if (!model) return false;
+      const models = modelRef.current;
+      if (!models) return false;
 
       // For video elements, ensure the video has data
       if (element instanceof HTMLVideoElement) {
@@ -132,14 +149,30 @@ export function useNsfwDetection({
       }
 
       try {
-        const predictions: NsfwPrediction[] = await model.classify(element);
-        return predictions.some(
-          (p) =>
-            NSFW_CLASSES.includes(p.className) &&
-            p.probability > NSFW_THRESHOLD
-        );
+        const [nsfwPreds, mnPreds] = await Promise.all([
+          models.nsfw.classify(element),
+          models.mobilenet.classify(element)
+        ]);
+        
+        // 1. Check Explicit Content (NSFW)
+        const isNsfw = nsfwPreds.some((p: any) => {
+          const threshold = CLASS_THRESHOLDS[p.className];
+          return threshold !== undefined && p.probability > threshold;
+        });
+        if (isNsfw) return true;
+
+        // 2. Check Substances / Drugs / Cigarettes
+        // Removed broad terms like "match", "lighter", "needle" which trigger false positives on pens/fingers
+        const SUBSTANCE_KEYWORDS = ["cigarette", "cigar", "tobacco", "pill", "syringe", "hookah"];
+        const isSubstance = mnPreds.some((p: any) => {
+          if (p.probability < 0.5) return false; // Increased confidence to 50%
+          const classNameStr = p.className.toLowerCase();
+          return SUBSTANCE_KEYWORDS.some(kw => classNameStr.includes(kw));
+        });
+
+        return isSubstance;
       } catch (err) {
-        console.error("[NSFW] Classification error:", err);
+        console.error("[NSFW/Substances] Classification error:", err);
         return false;
       }
     },
@@ -182,6 +215,8 @@ export function useNsfwVideoAnalysis(
   useEffect(() => {
     if (!enabled) return;
 
+    let consecutiveHits = 0;
+
     const interval = setInterval(async () => {
       // Skip if a previous classification is still running
       if (analysisRef.current) return;
@@ -194,7 +229,16 @@ export function useNsfwVideoAnalysis(
       analysisRef.current = true;
       try {
         const result = await classifyElement(video);
-        setIsNsfw(result);
+        
+        // Temporal Buffering (Debounce): Require 2 consecutive positive hits to trigger the block
+        // This eliminates single-frame glitches/false positives
+        if (result) {
+          consecutiveHits++;
+          if (consecutiveHits >= 2) setIsNsfw(true);
+        } else {
+          consecutiveHits = 0;
+          setIsNsfw(false);
+        }
       } finally {
         analysisRef.current = false;
       }

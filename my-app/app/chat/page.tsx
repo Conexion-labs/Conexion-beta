@@ -250,72 +250,58 @@ function ChatApp() {
       {/* Main Workspace */}
       <main className="flex-1 flex overflow-hidden relative">
         
-        {/* TEXT MODE - Split View */}
+        {/* TEXT MODE - Immersive View */}
         {mode === "text" && (
-          <div className="flex w-full max-w-7xl mx-auto p-4 md:p-8 gap-8">
-            
-            {/* Left Column: Status & Controls */}
-            <div className="w-80 flex-none hidden md:flex flex-col gap-6">
-              <div className="warm-panel p-8 h-full flex flex-col justify-between">
-                <div>
-                  <h3 className="font-serif text-3xl mb-2">Session</h3>
-                  <p className="text-[var(--color-gray-brown)] text-sm mb-8 leading-relaxed">
-                    {status === "idle" ? "Ready to begin." : status === "connecting" || status === "queued" ? "Establishing connection across the network." : status === "chatting" ? "Encrypted tunnel active." : "Connection terminated."}
-                  </p>
-                  
-                  {status === "chatting" && (
-                    <div className="mb-8">
-                      <div className="text-[10px] uppercase tracking-widest font-bold text-[var(--color-gray-light)] mb-2">Duration</div>
-                      <div className="text-4xl font-light font-mono">{fmt(elapsed)}</div>
-                    </div>
-                  )}
-
-                  {tags.length > 0 && (
-                    <div className="mb-8">
-                      <div className="text-[10px] uppercase tracking-widest font-bold text-[var(--color-gray-light)] mb-2">Active Filters</div>
-                      <div className="flex flex-wrap gap-2">
-                        {tags.map(t => <span key={t} className="text-xs px-3 py-1 bg-[var(--color-beige)] rounded-full text-[var(--color-charcoal)]">{t}</span>)}
-                      </div>
+          <div className="flex w-full h-full max-w-5xl mx-auto p-4 md:p-8 relative">
+            <div className="w-full h-full flex flex-col bg-white/40 backdrop-blur-2xl border border-[var(--color-border)] rounded-[2rem] shadow-[0_8px_32px_rgba(0,0,0,0.05)] overflow-hidden relative">
+              
+              {/* Text Room Header */}
+              <div className="h-20 flex items-center justify-between px-8 border-b border-[var(--color-border)] bg-white/50">
+                <div className="flex flex-col">
+                  <h2 className="font-serif text-2xl text-[var(--color-charcoal)]">Text Studio</h2>
+                  <div className="text-[10px] uppercase tracking-widest font-bold text-[var(--color-gray-brown)]">
+                    {status === "idle" ? "Ready to connect" : status === "connecting" || status === "queued" ? "Seeking resonance..." : status === "chatting" ? `Encrypted tunnel active • ${fmt(elapsed)}` : "Connection terminated"}
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-3">
+                  {status === "idle" || status === "ended" ? (
+                    <button onClick={startSearch} className="btn-primary py-2 px-6 shadow-sm">Begin</button>
+                  ) : status === "connecting" || status === "queued" ? (
+                    <button onClick={stopSearch} className="btn-secondary py-2 px-6">Abort</button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button onClick={skip} className="btn-secondary py-2 px-4 shadow-sm"><RiSkipForwardLine className="text-xl" /></button>
+                      <button onClick={endCall} className="btn-secondary py-2 px-4 text-[#D4916A] hover:bg-[#D4916A]/10 border-[#D4916A]/20 shadow-sm"><RiCloseCircleLine className="text-xl" /></button>
                     </div>
                   )}
                 </div>
-
-                {status === "idle" || status === "ended" ? (
-                  <button onClick={startSearch} className="w-full btn-primary py-4 text-base">Begin Encounter</button>
-                ) : status === "connecting" || status === "queued" ? (
-                  <button onClick={stopSearch} className="w-full py-4 rounded-xl border border-[var(--color-border)] text-[var(--color-charcoal)] font-semibold hover:bg-[var(--color-beige)] transition-colors">Abort Search</button>
-                ) : (
-                  <div className="flex gap-2">
-                    <button onClick={skip} className="flex-1 py-3 rounded-xl bg-[var(--color-charcoal)] text-[var(--color-ivory)] font-semibold text-sm hover:bg-[var(--color-charcoal-80)] transition-colors">Skip</button>
-                    <button onClick={endCall} className="flex-none px-4 rounded-xl border border-[var(--color-border)] text-[#D4916A] hover:bg-[#D4916A]/10 transition-colors"><RiCloseCircleLine className="text-xl" /></button>
-                  </div>
-                )}
               </div>
-            </div>
 
-            {/* Right Column: Chat Stream */}
-            <div className="flex-1 warm-panel overflow-hidden flex flex-col shadow-sm">
-              <div className="flex-1 overflow-y-auto p-6 md:p-10 flex flex-col gap-6 scroll-smooth">
+              {/* Chat Stream */}
+              <div className="flex-1 overflow-y-auto p-8 flex flex-col gap-6 relative">
                 {status === "idle" || status === "ended" ? (
-                  <div className="m-auto text-center opacity-50">
-                    <RiMessage3Line className="text-6xl mx-auto mb-4 text-[var(--color-gray-light)]" />
-                    <p className="font-serif text-2xl italic">Silence fills the room.</p>
+                  <div className="m-auto text-center opacity-50 flex flex-col items-center">
+                    <div className="w-24 h-24 rounded-full border border-dashed border-[var(--color-charcoal)] flex items-center justify-center mb-6">
+                      <RiMessage3Line className="text-4xl text-[var(--color-charcoal)]" />
+                    </div>
+                    <p className="font-serif text-3xl italic">Silence fills the room.</p>
                   </div>
                 ) : status === "connecting" || status === "queued" ? (
                   <div className="m-auto flex flex-col items-center">
-                    <div className="w-16 h-16 rounded-full border border-[var(--color-border)] flex items-center justify-center mb-6 relative">
-                      <motion.div animate={{ scale: [1, 1.5], opacity: [1, 0] }} transition={{ duration: 1.5, repeat: Infinity }} className="absolute inset-0 rounded-full border border-[var(--color-charcoal)]" />
-                      <div className="w-2 h-2 rounded-full bg-[var(--color-charcoal)] animate-pulse" />
+                    <div className="w-24 h-24 rounded-full border border-[var(--color-border)] flex items-center justify-center mb-8 relative">
+                      <motion.div animate={{ scale: [1, 2], opacity: [0.5, 0] }} transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }} className="absolute inset-0 rounded-full border border-[var(--color-charcoal)]" />
+                      <div className="w-3 h-3 rounded-full bg-[var(--color-charcoal)] animate-pulse" />
                     </div>
-                    <p className="font-serif text-2xl italic">Seeking resonance...</p>
-                    {status === "queued" && <p className="text-sm mt-2 text-[var(--color-gray-brown)]">Queue: {queuePosition}</p>}
+                    <p className="font-serif text-3xl italic">Seeking resonance...</p>
+                    {status === "queued" && <p className="text-sm mt-4 text-[var(--color-gray-brown)] bg-[var(--color-parchment)] px-4 py-1 rounded-full border border-[var(--color-border)]">Queue Position: {queuePosition}</p>}
                   </div>
                 ) : (
                   <AnimatePresence initial={false}>
                     {msgs.map(m => (
-                      <motion.div key={m.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`max-w-[80%] flex flex-col ${m.from === "system" ? "self-center items-center my-4" : m.from === "me" ? "self-end items-end" : "self-start items-start"}`}>
-                        {m.from !== "system" && <span className="text-[9px] uppercase tracking-widest text-[var(--color-gray-light)] mb-1.5 px-2">{m.from === "me" ? "You" : "Stranger"}</span>}
-                        <div className={`px-6 py-3.5 text-[15px] leading-relaxed shadow-sm ${m.from === "system" ? "bg-[var(--color-parchment)] text-[var(--color-gray-brown)] text-xs uppercase tracking-wider font-bold rounded-full border border-[var(--color-border)]" : m.from === "me" ? "bg-[var(--color-charcoal)] text-[var(--color-ivory)] rounded-[20px_20px_4px_20px]" : "bg-white text-[var(--color-charcoal)] border border-[var(--color-border)] rounded-[20px_20px_20px_4px]"}`}>
+                      <motion.div key={m.id} initial={{ opacity: 0, scale: 0.95, y: 10 }} animate={{ opacity: 1, scale: 1, y: 0 }} className={`max-w-[70%] flex flex-col ${m.from === "system" ? "self-center items-center my-6" : m.from === "me" ? "self-end items-end" : "self-start items-start"}`}>
+                        {m.from !== "system" && <span className="text-[10px] uppercase tracking-widest font-bold text-[var(--color-gray-light)] mb-2 px-2">{m.from === "me" ? "You" : "Stranger"}</span>}
+                        <div className={`px-6 py-4 text-[15px] leading-relaxed shadow-sm ${m.from === "system" ? "bg-[var(--color-beige)] text-[var(--color-gray-brown)] text-[10px] uppercase tracking-widest font-bold rounded-full border border-[var(--color-border)] px-6" : m.from === "me" ? "bg-gradient-to-br from-[var(--color-charcoal)] to-[var(--color-charcoal-80)] text-[var(--color-ivory)] rounded-[24px_24px_6px_24px] shadow-[0_4px_12px_rgba(46,39,36,0.15)]" : "bg-white text-[var(--color-charcoal)] border border-[var(--color-border)] rounded-[24px_24px_24px_6px] shadow-[0_4px_12px_rgba(0,0,0,0.03)]"}`}>
                           {m.text}
                         </div>
                       </motion.div>
@@ -326,34 +312,20 @@ function ChatApp() {
               </div>
 
               {/* Input Area */}
-              <div className="p-4 md:p-6 bg-white/50 border-t border-[var(--color-border)] flex items-end gap-3 relative">
-                
-                {/* Mobile controls */}
-                <div className="md:hidden absolute -top-14 left-0 right-0 flex justify-center gap-2 px-4 pointer-events-none">
-                  {status === "idle" || status === "ended" ? (
-                    <button onClick={startSearch} className="pointer-events-auto bg-[var(--color-charcoal)] text-[var(--color-ivory)] px-6 py-2 rounded-full text-xs font-bold uppercase tracking-wider shadow-lg">Start</button>
-                  ) : status === "connecting" || status === "queued" ? (
-                     <button onClick={stopSearch} className="pointer-events-auto bg-white border border-[var(--color-border)] text-[var(--color-charcoal)] px-6 py-2 rounded-full text-xs font-bold uppercase tracking-wider shadow-lg">Cancel</button>
-                  ) : (
-                    <>
-                      <button onClick={skip} className="pointer-events-auto bg-white border border-[var(--color-border)] text-[var(--color-charcoal)] px-6 py-2 rounded-full text-xs font-bold uppercase tracking-wider shadow-lg">Skip</button>
-                      <button onClick={endCall} className="pointer-events-auto bg-white border border-[var(--color-border)] text-[#D4916A] px-4 py-2 rounded-full shadow-lg"><RiCloseCircleLine/></button>
-                    </>
-                  )}
-                </div>
-
-                <div className="flex-1 bg-white border border-[var(--color-border)] rounded-2xl flex items-center px-4 py-1 focus-within:ring-2 ring-[var(--color-beige)] transition-shadow">
+              <div className="p-6 bg-white/60 border-t border-[var(--color-border)] backdrop-blur-md">
+                <div className="max-w-4xl mx-auto bg-white border border-[var(--color-border)] rounded-2xl flex items-center px-4 py-2 shadow-sm focus-within:ring-2 ring-[var(--color-charcoal)]/10 transition-shadow">
                   <input
                     disabled={status !== "chatting"}
-                    className="flex-1 bg-transparent border-none outline-none py-3 text-[15px] placeholder-[var(--color-gray-light)] disabled:opacity-50"
-                    placeholder={status === "chatting" ? "Write a message..." : "Waiting for connection..."}
+                    className="flex-1 bg-transparent border-none outline-none py-3 px-2 text-[15px] placeholder-[var(--color-gray-light)] disabled:opacity-50"
+                    placeholder={status === "chatting" ? "Write your message here..." : "The room is closed."}
                     value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
                   />
-                  <button disabled={!draft.trim() || status !== "chatting"} onClick={send} className="w-10 h-10 rounded-xl bg-[var(--color-charcoal)] text-[var(--color-ivory)] flex items-center justify-center disabled:opacity-30 disabled:bg-[var(--color-gray-light)] transition-all">
-                    <RiSendPlaneFill className="ml-0.5" />
+                  <button disabled={!draft.trim() || status !== "chatting"} onClick={send} className="w-12 h-12 rounded-xl bg-[var(--color-charcoal)] text-[var(--color-ivory)] flex items-center justify-center disabled:opacity-40 disabled:bg-[var(--color-gray-brown)] transition-all hover:scale-105 active:scale-95 shadow-md">
+                    <RiSendPlaneFill className="text-xl ml-1" />
                   </button>
                 </div>
               </div>
+              
             </div>
           </div>
         )}
