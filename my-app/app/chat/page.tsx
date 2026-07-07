@@ -14,7 +14,78 @@ import {
 import { useNsfwDetection, useNsfwVideoAnalysis } from "../hooks/useNsfwDetection";
 
 const REPORT_REASONS = ["Inappropriate content", "Harassment", "Spam", "Underage user", "Other"];
-const INTERESTS = ["Art", "Philosophy", "Cinema", "Design", "Music", "Literature", "Tech", "Science", "Travel"];
+const INTEREST_CATEGORIES = [
+  {
+    label: "Creative",
+    items: ["🎨 Art", "🎬 Cinema", "📸 Photography", "✏️ Design", "🎭 Theatre", "🖋️ Writing", "🎮 Gaming", "🎵 Music", "🎸 Indie Music"],
+  },
+  {
+    label: "Mind",
+    items: ["📖 Philosophy", "🧠 Psychology", "♟️ Strategy", "🧩 Puzzles", "📚 Literature", "🔮 Mythology", "🗣️ Linguistics"],
+  },
+  {
+    label: "Science & Tech",
+    items: ["💻 Tech", "🤖 AI", "🚀 Space", "🔬 Science", "⚛️ Physics", "🧬 Biology", "🌐 Open Source"],
+  },
+  {
+    label: "Lifestyle",
+    items: ["✈️ Travel", "🍳 Cooking", "🌿 Wellness", "🧘 Meditation", "🏃 Fitness", "🌱 Sustainability", "🐾 Animals"],
+  },
+  {
+    label: "Culture",
+    items: ["🎌 Anime", "📺 TV Shows", "📰 Current Events", "🏛️ History", "🌍 Geopolitics", "🎙️ Podcasts", "📡 Media"],
+  },
+  {
+    label: "Passion",
+    items: ["🌙 Night Owl", "☕ Coffee", "📦 Minimalism", "🎲 Board Games", "🧶 Crafts", "🔭 Stargazing", "🎯 Self-Improvement"],
+  },
+];
+const ALL_INTERESTS = INTEREST_CATEGORIES.flatMap(c => c.items);
+
+// ── Hate-speech guard ──────────────────────────────────────────────────────
+// A representative list of slurs / hate terms. Extend as needed.
+const HATE_WORDS = [
+  // racial & ethnic slurs (abbreviated to avoid embedding them verbatim)
+  "nigger","nigga","chink","gook","spic","wetback","kike","kyke",
+  "raghead","towelhead","sandnigger","coon","porch monkey","jungle bunny",
+  "zipperhead","slope","cracker","honky","beaner","redskin",
+  // sexual orientation / gender slurs
+  "faggot","fag","dyke","tranny","shemale","queer",
+  // religious slurs
+  "infidel","crusader","islamophobe",
+  // disability slurs
+  "retard","retarded","spastic",
+  // general hate / incitement
+  "kill yourself","kys","go die","hang yourself",
+  "nazi","heil","white power","white supremacy",
+];
+
+function detectHateSpeech(text: string): { flagged: boolean; words: string[] } {
+  const lower = text.toLowerCase();
+  const found = HATE_WORDS.filter(w => {
+    const re = new RegExp(`(?<![a-z])${w.replace(/ /g, "\\s+")}(?![a-z])`, "i");
+    return re.test(lower);
+  });
+  return { flagged: found.length > 0, words: found };
+}
+
+/** Renders draft text with hate-speech words visually struck-through */
+function DraftPreview({ text, flaggedWords }: { text: string; flaggedWords: string[] }) {
+  if (flaggedWords.length === 0) return <span>{text}</span>;
+  // Build a regex that matches any of the flagged words (case-insensitive)
+  const pattern = flaggedWords.map(w => w.replace(/ /g, "\\s+")).join("|");
+  const re = new RegExp(`(${pattern})`, "gi");
+  const parts = text.split(re);
+  return (
+    <span>
+      {parts.map((part, i) =>
+        re.test(part)
+          ? <span key={i} className="line-through text-red-400 font-semibold" title="Blocked word">{part}</span>
+          : <span key={i}>{part}</span>
+      )}
+    </span>
+  );
+}
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3001/ws";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace('/api/stats', '') || "http://localhost:3001";
 
@@ -58,11 +129,18 @@ function ChatApp() {
   const modeParam = searchParams.get("mode") as ChatMode | null;
   const [mode, setMode] = useState<ChatMode>(modeParam === "video" ? "video" : "text");
 
+  const [showDisclaimer, setShowDisclaimer] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return sessionStorage.getItem("conexion_disclaimer_accepted") !== "1";
+  });
+  const acceptDisclaimer = () => { sessionStorage.setItem("conexion_disclaimer_accepted", "1"); setShowDisclaimer(false); };
+
   const [status, setStatus] = useState<Status>("idle");
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [draft, setDraft] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [showTags, setShowTags] = useState(false);
+  const [filterSearch, setFilterSearch] = useState("");
   const [micOn, setMicOn] = useState(true);
   const [camOn, setCamOn] = useState(true);
   const [elapsed, setElapsed] = useState(0);
@@ -212,6 +290,87 @@ function ChatApp() {
     <div className="flex flex-col h-screen w-full overflow-hidden bg-[var(--color-ivory)] text-[var(--color-charcoal)] font-sans">
       <ParticleBackground />
 
+      {/* Well-behaviour Disclaimer Modal */}
+      <AnimatePresence>
+        {showDisclaimer && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[200] flex items-center justify-center px-4"
+            style={{ backgroundColor: "rgba(30, 25, 20, 0.65)", backdropFilter: "blur(8px)" }}
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.92, y: 20, opacity: 0 }}
+              transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+              className="w-full max-w-lg rounded-[2rem] overflow-hidden shadow-[0_32px_80px_rgba(0,0,0,0.25)]"
+              style={{ backgroundColor: "var(--color-warm-white)", border: "1px solid var(--color-border)" }}
+            >
+              {/* Header stripe */}
+              <div className="px-8 pt-8 pb-6 border-b" style={{ borderColor: "var(--color-border)" }}>
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-2xl" aria-hidden="true">🛡️</span>
+                  <span className="text-[10px] font-bold tracking-[0.2em] uppercase" style={{ color: "var(--color-gray-brown)" }}>Community Guidelines</span>
+                </div>
+                <h2 className="text-3xl font-bold tracking-tight" style={{ color: "var(--color-charcoal)", fontFamily: "var(--font-serif)" }}>
+                  Before you connect…
+                </h2>
+              </div>
+
+              {/* Body */}
+              <div className="px-8 py-6 space-y-4">
+                <p className="text-sm leading-relaxed" style={{ color: "var(--color-gray-brown)" }}>
+                  Conexion enables genuine human connection while protecting your privacy. But anonymity comes
+                  with responsibility. By proceeding you agree to our{" "}
+                  <strong style={{ color: "var(--color-charcoal)" }}>Community Pledge</strong>:
+                </p>
+                <ul className="space-y-3">
+                  {[
+                    ["✦", "Treat every person with respect and dignity."],
+                    ["✦", "No harassment, hate speech, or discriminatory behaviour."],
+                    ["✦", "No explicit, sexual, or graphic content."],
+                    ["✦", "No illegal activity of any kind."],
+                    ["✦", "Users under 18 are strictly prohibited from using this platform."],
+                  ].map(([icon, text], i) => (
+                    <li key={i} className="flex items-start gap-3 text-sm" style={{ color: "var(--color-gray-brown)" }}>
+                      <span className="shrink-0 mt-0.5 font-bold" style={{ color: "var(--color-peach)" }}>{icon}</span>
+                      {text}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[11px] leading-relaxed pt-2" style={{ color: "var(--color-gray-light)" }}>
+                  Violations may be reported to platform moderators and, where required by law, to the
+                  relevant authorities. Anonymous does not mean consequence-free.{" "}
+                  <Link href="/terms" className="underline" style={{ textUnderlineOffset: 3 }}>Full Terms →</Link>
+                </p>
+              </div>
+
+              {/* CTA */}
+              <div className="px-8 pb-8 flex flex-col sm:flex-row gap-3">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={acceptDisclaimer}
+                  className="flex-1 py-4 rounded-2xl text-sm font-bold uppercase tracking-widest transition-colors"
+                  style={{ backgroundColor: "var(--color-charcoal)", color: "var(--color-ivory)" }}
+                >
+                  I agree — Let me in
+                </motion.button>
+                <Link
+                  href="/"
+                  className="flex-none flex items-center justify-center py-4 px-6 rounded-2xl text-sm font-bold uppercase tracking-widest border transition-colors"
+                  style={{ borderColor: "var(--color-border)", color: "var(--color-gray-brown)" }}
+                >
+                  Go back
+                </Link>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Reconnection Banner */}
       <AnimatePresence>
         {isReconnecting && (
@@ -222,27 +381,120 @@ function ChatApp() {
       </AnimatePresence>
 
       {/* Header */}
-      <header className="flex-none h-20 px-6 md:px-12 flex items-center justify-between border-b border-[var(--color-border)] bg-white/40 backdrop-blur-md relative z-40">
-        <div className="flex items-center gap-6">
-          <Link href="/" className="w-10 h-10 rounded-full flex items-center justify-center bg-[var(--color-beige)] text-[var(--color-charcoal)] hover:bg-[var(--color-charcoal)] hover:text-[var(--color-ivory)] transition-colors">
-            <RiArrowLeftLine className="text-xl" />
+      <header className="flex-none h-16 md:h-18 px-4 md:px-8 flex items-center justify-between border-b border-[var(--color-border)] bg-white/50 backdrop-blur-xl relative z-40 gap-3">
+
+        {/* ── Left: Brand + Back ── */}
+        <div className="flex items-center gap-3 min-w-0 shrink-0">
+          <Link
+            href="/"
+            className="group w-9 h-9 rounded-xl flex items-center justify-center border border-[var(--color-border)] bg-white/70 text-[var(--color-gray-brown)] hover:bg-[var(--color-charcoal)] hover:text-[var(--color-ivory)] hover:border-[var(--color-charcoal)] transition-all duration-200 shadow-sm"
+          >
+            <RiArrowLeftLine className="text-base group-hover:-translate-x-0.5 transition-transform" />
           </Link>
-          <span className="font-serif text-xl font-bold tracking-tight hidden sm:block">Conexion</span>
+          <div className="hidden sm:flex flex-col leading-none">
+            <span className="font-serif text-[15px] font-bold tracking-tight" style={{ color: "var(--color-charcoal)" }}>
+              Cone<span style={{ color: "var(--color-peach)" }}>x</span>ion
+            </span>
+            {/* Live status pill */}
+            <AnimatePresence mode="wait">
+              <motion.span
+                key={status}
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.25 }}
+                className="text-[9px] font-bold uppercase tracking-[0.18em] flex items-center gap-1 mt-0.5"
+                style={{
+                  color: status === "chatting" ? "#6B8A6A" : status === "connecting" || status === "queued" ? "var(--color-peach)" : "var(--color-gray-light)"
+                }}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full inline-block ${status === "chatting" ? "bg-[#6B8A6A] animate-pulse" : status === "connecting" || status === "queued" ? "bg-[var(--color-peach)] animate-ping" : "bg-[var(--color-gray-light)]"}`}
+                />
+                {status === "idle" ? "Ready" : status === "connecting" ? "Searching…" : status === "queued" ? `Queue · #${queuePosition ?? "—"}` : status === "chatting" ? "Live" : "Ended"}
+              </motion.span>
+            </AnimatePresence>
+          </div>
         </div>
 
-        {/* Central Mode Toggle */}
-        <div className="flex items-center bg-[var(--color-parchment)] p-1 rounded-full border border-[var(--color-border)]">
-          <button onClick={() => switchMode("text")} disabled={status !== "idle" && status !== "ended"} className={`px-5 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${(status !== "idle" && status !== "ended") ? "opacity-50" : ""} ${mode === "text" ? "bg-[var(--color-charcoal)] text-[var(--color-ivory)] shadow-md" : "text-[var(--color-gray-brown)] hover:text-[var(--color-charcoal)]"}`}>
-            Text
-          </button>
-          <button onClick={() => switchMode("video")} disabled={status !== "idle" && status !== "ended"} className={`px-5 py-1.5 rounded-full text-xs font-bold uppercase tracking-wider transition-all ${(status !== "idle" && status !== "ended") ? "opacity-50" : ""} ${mode === "video" ? "bg-[var(--color-charcoal)] text-[var(--color-ivory)] shadow-md" : "text-[var(--color-gray-brown)] hover:text-[var(--color-charcoal)]"}`}>
-            Video
-          </button>
+        {/* ── Centre: Mode Toggle ── */}
+        <div className="flex-1 flex justify-center">
+          <div className="relative flex items-center p-[3px] rounded-2xl border border-[var(--color-border)] bg-[var(--color-parchment)] shadow-inner">
+            {/* Sliding highlight */}
+            <motion.div
+              className="absolute top-[3px] bottom-[3px] rounded-[10px] bg-[var(--color-charcoal)] shadow-md"
+              layout
+              layoutId="nav-mode-pill"
+              transition={{ type: "spring", stiffness: 380, damping: 30 }}
+              style={{
+                width: "calc(50% - 3px)",
+                left: mode === "text" ? 3 : "calc(50%)",
+              }}
+            />
+            <button
+              onClick={() => switchMode("text")}
+              disabled={status !== "idle" && status !== "ended"}
+              className={`relative z-10 flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[11px] font-bold uppercase tracking-wider transition-colors duration-200 ${
+                (status !== "idle" && status !== "ended") ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+              } ${mode === "text" ? "text-[var(--color-ivory)]" : "text-[var(--color-gray-brown)] hover:text-[var(--color-charcoal)]"}`}
+            >
+              <RiMessage3Line className="text-sm" />
+              <span>Text</span>
+            </button>
+            <button
+              onClick={() => switchMode("video")}
+              disabled={status !== "idle" && status !== "ended"}
+              className={`relative z-10 flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[11px] font-bold uppercase tracking-wider transition-colors duration-200 ${
+                (status !== "idle" && status !== "ended") ? "cursor-not-allowed opacity-60" : "cursor-pointer"
+              } ${mode === "video" ? "text-[var(--color-ivory)]" : "text-[var(--color-gray-brown)] hover:text-[var(--color-charcoal)]"}`}
+            >
+              <RiVideoChatLine className="text-sm" />
+              <span>Video</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          <button onClick={() => setShowTags(true)} className="text-xs font-bold uppercase tracking-wider text-[var(--color-gray-brown)] hover:text-[var(--color-charcoal)] transition-colors flex items-center gap-2 bg-[var(--color-parchment)] px-4 py-2 rounded-full border border-[var(--color-border)]">
-            Filters {tags.length > 0 && <span className="bg-[var(--color-peach)] text-white w-4 h-4 rounded-full flex items-center justify-center text-[9px]">{tags.length}</span>}
+        {/* ── Right: Stats + Filter ── */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Online count */}
+          {onlineCount > 0 && (
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--color-border)] bg-white/60 text-[10px] font-bold uppercase tracking-widest" style={{ color: "var(--color-gray-brown)" }}>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#6B8A6A] animate-pulse" />
+              {onlineCount.toLocaleString()}
+            </div>
+          )}
+
+          {/* Timer (only while chatting) */}
+          <AnimatePresence>
+            {status === "chatting" && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--color-border)] bg-white/60 text-[10px] font-bold uppercase tracking-widest tabular-nums"
+                style={{ color: "var(--color-charcoal)" }}
+              >
+                <RiShieldCheckLine className="text-[#6B8A6A] text-xs" />
+                {fmt(elapsed)}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Filters */}
+          <button
+            onClick={() => setShowTags(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-[var(--color-border)] bg-white/60 text-[10px] font-bold uppercase tracking-widest hover:bg-[var(--color-charcoal)] hover:text-[var(--color-ivory)] hover:border-[var(--color-charcoal)] transition-all duration-200 shadow-sm group"
+            style={{ color: "var(--color-gray-brown)" }}
+          >
+            <svg className="text-sm w-3.5 h-3.5 group-hover:rotate-180 transition-transform duration-300" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M2 4h12M4 8h8M6 12h4" strokeLinecap="round"/>
+            </svg>
+            <span>Filter</span>
+            {tags.length > 0 && (
+              <span className="w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-black" style={{ backgroundColor: "var(--color-peach)", color: "#fff" }}>
+                {tags.length}
+              </span>
+            )}
           </button>
         </div>
       </header>
@@ -312,17 +564,79 @@ function ChatApp() {
               </div>
 
               {/* Input Area */}
-              <div className="p-6 bg-white/60 border-t border-[var(--color-border)] backdrop-blur-md">
-                <div className="max-w-4xl mx-auto bg-white border border-[var(--color-border)] rounded-2xl flex items-center px-4 py-2 shadow-sm focus-within:ring-2 ring-[var(--color-charcoal)]/10 transition-shadow">
-                  <input
-                    disabled={status !== "chatting"}
-                    className="flex-1 bg-transparent border-none outline-none py-3 px-2 text-[15px] placeholder-[var(--color-gray-light)] disabled:opacity-50"
-                    placeholder={status === "chatting" ? "Write your message here..." : "The room is closed."}
-                    value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
-                  />
-                  <button disabled={!draft.trim() || status !== "chatting"} onClick={send} className="w-12 h-12 rounded-xl bg-[var(--color-charcoal)] text-[var(--color-ivory)] flex items-center justify-center disabled:opacity-40 disabled:bg-[var(--color-gray-brown)] transition-all hover:scale-105 active:scale-95 shadow-md">
-                    <RiSendPlaneFill className="text-xl ml-1" />
-                  </button>
+              <div className="p-4 md:p-6 bg-white/60 border-t border-[var(--color-border)] backdrop-blur-md">
+                <div className="max-w-4xl mx-auto space-y-2">
+
+                  {/* Hate-speech preview overlay — only shown when something is typed */}
+                  <AnimatePresence>
+                    {draft.trim() && (() => {
+                      const { flagged, words } = detectHateSpeech(draft);
+                      return flagged ? (
+                        <motion.div
+                          key="hate-warning"
+                          initial={{ opacity: 0, y: 6 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: 6 }}
+                          transition={{ duration: 0.2 }}
+                          className="flex items-start gap-3 px-4 py-3 rounded-2xl border"
+                          style={{ backgroundColor: "rgba(220,38,38,0.06)", borderColor: "rgba(220,38,38,0.2)" }}
+                        >
+                          <RiAlertFill className="text-red-500 text-lg shrink-0 mt-0.5" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[11px] font-black uppercase tracking-[0.15em] text-red-500 mb-1">Message blocked — hate speech detected</p>
+                            <p className="text-sm break-words leading-snug" style={{ color: "var(--color-charcoal)" }}>
+                              <DraftPreview text={draft} flaggedWords={words} />
+                            </p>
+                          </div>
+                        </motion.div>
+                      ) : null;
+                    })()}
+                  </AnimatePresence>
+
+                  {/* Input row */}
+                  {(() => {
+                    const { flagged, words } = detectHateSpeech(draft);
+                    const blocked = flagged;
+                    return (
+                      <div className={`bg-white border rounded-2xl flex items-center px-4 py-2 shadow-sm transition-all ${
+                        blocked
+                          ? "border-red-300 ring-2 ring-red-200"
+                          : "border-[var(--color-border)] focus-within:ring-2 ring-[var(--color-charcoal)]/10"
+                      }`}>
+                        <input
+                          disabled={status !== "chatting"}
+                          className="flex-1 bg-transparent border-none outline-none py-3 px-2 text-[15px] placeholder-[var(--color-gray-light)] disabled:opacity-50"
+                          placeholder={status === "chatting" ? "Write your message here..." : "The room is closed."}
+                          value={draft}
+                          onChange={e => setDraft(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              if (!blocked) send();
+                            }
+                          }}
+                        />
+                        <motion.button
+                          whileTap={!blocked && draft.trim() && status === "chatting" ? { scale: 0.9 } : {}}
+                          disabled={!draft.trim() || status !== "chatting" || blocked}
+                          onClick={() => { if (!blocked) send(); }}
+                          title={blocked ? "Remove hateful language to send" : "Send"}
+                          className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all shadow-md ${
+                            blocked
+                              ? "bg-red-100 cursor-not-allowed"
+                              : !draft.trim() || status !== "chatting"
+                                ? "bg-[var(--color-gray-brown)] opacity-40 cursor-not-allowed"
+                                : "bg-[var(--color-charcoal)] hover:scale-105 active:scale-95"
+                          }`}
+                        >
+                          {blocked
+                            ? <RiShieldCheckLine className="text-xl text-red-500" />
+                            : <RiSendPlaneFill className="text-xl ml-1 text-[var(--color-ivory)]" />
+                          }
+                        </motion.button>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
               
@@ -452,28 +766,117 @@ function ChatApp() {
       {/* Filters Modal */}
       <AnimatePresence>
         {showTags && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={(e) => e.target === e.currentTarget && setShowTags(false)}>
-            <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="bg-[var(--color-ivory)] w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
-              <div className="p-8 border-b border-[var(--color-border)] flex justify-between items-center bg-white">
-                <h2 className="font-serif text-3xl">Filter Interests</h2>
-                <button onClick={() => setShowTags(false)} className="text-[var(--color-gray-light)] hover:text-[var(--color-charcoal)] transition-colors"><RiCloseCircleLine className="text-3xl" /></button>
-              </div>
-              <div className="p-8 overflow-y-auto">
-                <p className="text-[var(--color-gray-brown)] mb-6 text-sm">Select topics to curate your connections. We will prioritize matching you with minds that share these aesthetics.</p>
-                <div className="flex flex-wrap gap-2">
-                  {INTERESTS.map(t => {
-                    const active = tags.includes(t);
-                    return (
-                      <button key={t} onClick={() => setTags(p => active ? p.filter(x => x !== t) : [...p, t])} className={`px-5 py-2 rounded-full text-sm font-medium transition-all border ${active ? "bg-[var(--color-charcoal)] text-[var(--color-ivory)] border-[var(--color-charcoal)] shadow-md scale-105" : "bg-white text-[var(--color-gray-brown)] border-[var(--color-border)] hover:border-[var(--color-gray-brown)]"}`}>
-                        {t}
-                      </button>
-                    )
-                  })}
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={(e) => e.target === e.currentTarget && (setShowTags(false), setFilterSearch(""))}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }}
+              className="bg-[var(--color-ivory)] w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh]"
+            >
+              {/* Modal Header */}
+              <div className="px-8 pt-8 pb-6 border-b border-[var(--color-border)] bg-white">
+                <div className="flex justify-between items-start mb-5">
+                  <div>
+                    <h2 className="font-serif text-3xl" style={{ color: "var(--color-charcoal)" }}>Curate your feed</h2>
+                    <p className="text-xs mt-1 tracking-wide" style={{ color: "var(--color-gray-light)" }}>Match with minds that share your vibe</p>
+                  </div>
+                  <button
+                    onClick={() => { setShowTags(false); setFilterSearch(""); }}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-charcoal)] hover:text-[var(--color-ivory)] hover:border-[var(--color-charcoal)] transition-all"
+                    style={{ color: "var(--color-gray-light)" }}
+                  >
+                    <RiCloseCircleLine className="text-lg" />
+                  </button>
+                </div>
+                {/* Search */}
+                <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-parchment)] focus-within:border-[var(--color-charcoal)] transition-colors">
+                  <svg className="w-4 h-4 shrink-0" style={{ color: "var(--color-gray-light)" }} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <circle cx="7" cy="7" r="4.5"/><path d="m11 11 2.5 2.5" strokeLinecap="round"/>
+                  </svg>
+                  <input
+                    type="text"
+                    value={filterSearch}
+                    onChange={e => setFilterSearch(e.target.value)}
+                    placeholder="Search interests…"
+                    className="flex-1 bg-transparent border-none outline-none text-sm placeholder-[var(--color-gray-light)]"
+                    style={{ color: "var(--color-charcoal)" }}
+                  />
+                  {filterSearch && (
+                    <button onClick={() => setFilterSearch("")} className="text-[var(--color-gray-light)] hover:text-[var(--color-charcoal)] transition-colors">
+                      <RiCloseCircleLine className="text-base" />
+                    </button>
+                  )}
                 </div>
               </div>
-              <div className="p-6 border-t border-[var(--color-border)] bg-white flex justify-end gap-3">
-                <button onClick={() => setTags([])} className="px-6 py-2 text-sm font-semibold text-[var(--color-gray-brown)] hover:text-[var(--color-charcoal)]">Clear</button>
-                <button onClick={() => setShowTags(false)} className="px-8 py-2 text-sm font-semibold bg-[var(--color-charcoal)] text-[var(--color-ivory)] rounded-full hover:shadow-lg transition-shadow">Save Configuration</button>
+
+              {/* Category sections */}
+              <div className="overflow-y-auto px-6 py-5 space-y-6">
+                {(() => {
+                  const q = filterSearch.toLowerCase().trim();
+                  const filtered = INTEREST_CATEGORIES
+                    .map(cat => ({ ...cat, items: cat.items.filter(t => t.toLowerCase().includes(q)) }))
+                    .filter(cat => cat.items.length > 0);
+
+                  if (filtered.length === 0) return (
+                    <div className="py-12 text-center" style={{ color: "var(--color-gray-light)" }}>
+                      <p className="text-4xl mb-3">🔍</p>
+                      <p className="text-sm">No interests match <em>&ldquo;{filterSearch}&rdquo;</em></p>
+                    </div>
+                  );
+
+                  return filtered.map(cat => (
+                    <div key={cat.label}>
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className="text-[10px] font-black uppercase tracking-[0.18em]" style={{ color: "var(--color-gray-brown)" }}>{cat.label}</span>
+                        <div className="flex-1 h-px" style={{ backgroundColor: "var(--color-border)" }} />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {cat.items.map(t => {
+                          const active = tags.includes(t);
+                          return (
+                            <motion.button
+                              key={t}
+                              whileTap={{ scale: 0.92 }}
+                              onClick={() => setTags(p => active ? p.filter(x => x !== t) : [...p, t])}
+                              className={`px-4 py-2 rounded-2xl text-sm font-medium transition-all border ${
+                                active
+                                  ? "border-[var(--color-charcoal)] shadow-md"
+                                  : "bg-white border-[var(--color-border)] hover:border-[var(--color-gray-brown)] hover:shadow-sm"
+                              }`}
+                              style={active ? { backgroundColor: "var(--color-charcoal)", color: "var(--color-ivory)" } : { color: "var(--color-gray-brown)" }}
+                            >
+                              {t}
+                            </motion.button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-5 border-t border-[var(--color-border)] bg-white flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  {tags.length > 0 ? (
+                    <>
+                      <span className="text-xs font-bold" style={{ color: "var(--color-charcoal)" }}>{tags.length} selected</span>
+                      <button onClick={() => setTags([])} className="text-xs font-semibold underline" style={{ color: "var(--color-gray-brown)", textUnderlineOffset: 3 }}>Clear all</button>
+                    </>
+                  ) : (
+                    <span className="text-xs" style={{ color: "var(--color-gray-light)" }}>No filters active — matching everyone</span>
+                  )}
+                </div>
+                <motion.button
+                  whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+                  onClick={() => { setShowTags(false); setFilterSearch(""); }}
+                  className="px-7 py-2.5 text-sm font-bold rounded-2xl shadow-md transition-shadow hover:shadow-lg"
+                  style={{ backgroundColor: "var(--color-charcoal)", color: "var(--color-ivory)" }}
+                >
+                  Apply
+                </motion.button>
               </div>
             </motion.div>
           </motion.div>
