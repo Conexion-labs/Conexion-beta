@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { RiArrowLeftLine, RiMailSendLine } from "react-icons/ri";
 import ParticleBackground from "../components/ParticleBackground";
@@ -37,6 +38,40 @@ const FEATURES = [
 ];
 
 export default function LaunchingSoon() {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [message, setMessage] = useState("");
+
+  const handleJoinWaitlist = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email) return;
+
+    setStatus("loading");
+    setMessage("");
+
+    try {
+      const res = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setStatus("success");
+        setMessage(`You're #${data.count} on the waitlist!`);
+        setEmail("");
+      } else {
+        setStatus("error");
+        setMessage(data.error || "Failed to join waitlist");
+      }
+    } catch (error) {
+      setStatus("error");
+      setMessage("An unexpected error occurred");
+    }
+  };
+
   return (
     <div className="relative min-h-screen w-full flex flex-col items-center selection:bg-[var(--color-charcoal)] selection:text-[var(--color-ivory)]"
       style={{ backgroundColor: "var(--color-ivory)" }}>
@@ -99,7 +134,8 @@ export default function LaunchingSoon() {
           We're putting the final touches on our encrypted peer-to-peer network. An entirely new way to experience human connection is coming to your browser.
         </motion.p>
 
-        <motion.div 
+        <motion.form 
+          onSubmit={handleJoinWaitlist}
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, delay: 0.8, ease: [0.16, 1, 0.3, 1] }}
@@ -108,13 +144,34 @@ export default function LaunchingSoon() {
         >
           <input 
             type="email" 
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={status === "loading"}
+            required
             placeholder="Enter your email for early access" 
-            className="flex-1 bg-transparent border-none outline-none px-6 py-4 text-[var(--color-charcoal)] placeholder-[var(--color-gray-light)] text-[15px]"
+            className="flex-1 bg-transparent border-none outline-none px-6 py-4 text-[var(--color-charcoal)] placeholder-[var(--color-gray-light)] text-[15px] disabled:opacity-50"
           />
-          <button className="bg-[var(--color-charcoal)] text-[var(--color-ivory)] w-14 h-14 rounded-2xl flex items-center justify-center hover:bg-[var(--color-charcoal-80)] transition-colors shrink-0">
-            <RiMailSendLine className="text-xl" />
+          <button 
+            type="submit"
+            disabled={status === "loading"}
+            className="bg-[var(--color-charcoal)] text-[var(--color-ivory)] w-14 h-14 rounded-2xl flex items-center justify-center hover:bg-[var(--color-charcoal-80)] transition-colors shrink-0 disabled:opacity-50"
+          >
+            {status === "loading" ? (
+              <span className="w-5 h-5 border-2 border-[var(--color-ivory)] border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <RiMailSendLine className="text-xl" />
+            )}
           </button>
-        </motion.div>
+        </motion.form>
+        {message && (
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className={`mt-4 text-sm ${status === "error" ? "text-red-500" : "text-green-600"}`}
+          >
+            {message}
+          </motion.p>
+        )}
 
         {/* Features Slider */}
         <motion.div 
