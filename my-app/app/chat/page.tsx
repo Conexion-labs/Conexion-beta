@@ -116,7 +116,7 @@ const getApiBase = () => {
 
 type Status = "idle" | "connecting" | "queued" | "chatting" | "ended";
 type ChatMode = "text" | "video";
-interface Msg { id: string; from: "me" | "them" | "system"; text: string; ts?: number; replyTo?: { text: string; from: "me" | "them" }; }
+interface Msg { id: string; from: "me" | "them" | "system"; text: string; ts?: number; replyTo?: { text: string; from: "me" | "them" }; read?: boolean; }
 
 function fmt(s: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -185,6 +185,8 @@ function ChatApp() {
   const [status, setStatus] = useState<Status>("idle");
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [draft, setDraft] = useState("");
+  const [partnerTyping, setPartnerTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [showTags, setShowTags] = useState(false);
   const [filterSearch, setFilterSearch] = useState("");
@@ -230,6 +232,33 @@ function ChatApp() {
     else if (timerRef.current) clearInterval(timerRef.current);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [status]);
+
+  // Handle window focus for read receipts
+  useEffect(() => {
+    const handleFocus = () => {
+      if (status !== "chatting") return;
+      const lastThem = msgs.slice().reverse().find(m => m.from === "them");
+      if (lastThem && !lastThem.read && wsRef.current?.readyState === WebSocket.OPEN) {
+         wsRef.current.send(JSON.stringify({ type: "read", messageId: lastThem.id }));
+      }
+    };
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [msgs, status]);
+
+  // Handle typing indicator debouncing
+  useEffect(() => {
+    if (status !== "chatting" || !wsRef.current) return;
+    if (wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "typing", isTyping: draft.length > 0 }));
+    }
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: "typing", isTyping: false }));
+      }
+    }, 1500);
+  }, [draft, status]);
 
   // Show ended popup whenever a conversation finishes
   useEffect(() => {
@@ -322,9 +351,22 @@ function ChatApp() {
           const incomingReplyTo = msg.replyTo?.text
             ? { text: msg.replyTo.text, from: "them" as const }
             : undefined;
-          setMsgs(m => [...m, { id: crypto.randomUUID(), from: "them", text: msg.text, replyTo: incomingReplyTo }]);
+          const msgId = msg.id || crypto.randomUUID();
+          setMsgs(m => [...m, { id: msgId, from: "them", text: msg.text, replyTo: incomingReplyTo }]);
+          if (document.hasFocus() && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: "read", messageId: msgId }));
+          }
+          setPartnerTyping(false);
           break;
         }
+        case "typing":
+          setPartnerTyping(!!msg.isTyping);
+          break;
+        case "read":
+          if (msg.messageId) {
+            setMsgs(m => m.map(x => x.id === msg.messageId ? { ...x, read: true } : x));
+          }
+          break;
         case "rtc_signal":
           if (!pcRef.current) break;
           try {
@@ -373,11 +415,12 @@ function ChatApp() {
     const { flagged } = detectHateSpeech(draft);
     if (flagged) return;
     const trimmed = draft.trim();
-    const payload: Record<string, unknown> = { type: "message", text: trimmed };
+    const msgId = crypto.randomUUID();
+    const payload: Record<string, unknown> = { type: "message", text: trimmed, id: msgId };
     if (replyingTo) payload.replyTo = { text: replyingTo.text };
     wsSend(payload);
     setMsgs(m => [...m, {
-      id: crypto.randomUUID(),
+      id: msgId,
       from: "me",
       text: trimmed,
       replyTo: replyingTo && replyingTo.from !== "system" ? { text: replyingTo.text, from: replyingTo.from } : undefined,
@@ -787,7 +830,10 @@ function ChatApp() {
                                   <p className="line-clamp-2 opacity-70">{m.replyTo.text}</p>
                                 </div>
                               )}
-                              <p className="px-5 py-3 text-[14px] sm:text-[15px] leading-relaxed">{m.text}</p>
+                              <p className="px-5 py-3 text-[14px] sm:text-[15px] leading-relaxed flex items-end gap-2">
+                                <span>{m.text}</span>
+                                {m.from === "me" && m.read && <span className="text-[9px] uppercase tracking-widest opacity-60 shrink-0 mb-0.5 font-bold">Read</span>}
+                              </p>
                             </div>
 
                             {/* Reply action button */}
@@ -812,7 +858,19 @@ function ChatApp() {
                     ))}
                   </AnimatePresence>
                 )}
-                <div ref={endRef} />
+                  <AnimatePresence>
+                    {partnerTyping && (
+                      <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} className="flex items-center gap-2 text-[10px] uppercase tracking-widest font-bold text-[var(--color-gray-light)] ml-2 mb-4">
+                        <span className="flex gap-0.5">
+                          <span className="w-1 h-1 bg-[var(--color-gray-light)] rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                          <span className="w-1 h-1 bg-[var(--color-gray-light)] rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                          <span className="w-1 h-1 bg-[var(--color-gray-light)] rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                        </span>
+                        {partnerName} is typing
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  <div ref={endRef} />
               </div>
 
               {/* Input Area */}
@@ -1044,11 +1102,19 @@ function ChatApp() {
                             {m.from === "me" ? (myName || "You") : partnerName}
                           </span>
                         )}
-                        <div className={`px-4 py-2 text-sm rounded-2xl ${m.from === "system" ? "text-[9px] uppercase tracking-widest text-[var(--color-gray-light)]" : m.from === "me" ? "bg-[var(--color-charcoal)] text-[var(--color-ivory)] rounded-tr-sm" : "bg-[var(--color-parchment)] text-[var(--color-charcoal)] border border-[var(--color-border)] rounded-tl-sm"}`}>
-                          {m.text}
+                        <div className={`px-4 py-2 text-sm rounded-2xl flex items-end gap-2 ${m.from === "system" ? "text-[9px] uppercase tracking-widest text-[var(--color-gray-light)]" : m.from === "me" ? "bg-[var(--color-charcoal)] text-[var(--color-ivory)] rounded-tr-sm" : "bg-[var(--color-parchment)] text-[var(--color-charcoal)] border border-[var(--color-border)] rounded-tl-sm"}`}>
+                          <span>{m.text}</span>
+                          {m.from === "me" && m.read && <span className="text-[8px] uppercase tracking-widest opacity-60 shrink-0 mb-0.5 font-bold">Read</span>}
                         </div>
                       </div>
                     ))}
+                    <AnimatePresence>
+                      {partnerTyping && (
+                        <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 5 }} className="text-[9px] uppercase tracking-widest font-bold text-[var(--color-gray-light)] px-1 mb-2">
+                          {partnerName} is typing...
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                     <div ref={endRef} />
                   </div>
                   <div className="p-4 border-t border-[var(--color-border)] bg-white">

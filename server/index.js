@@ -392,6 +392,22 @@ wss.on("connection", (ws) => {
         break;
       }
 
+      case "typing":
+        if (!client.partnerId) break;
+        {
+          const partner = clients.get(client.partnerId);
+          if (partner) send(partner.ws, { type: "typing", isTyping: !!msg.isTyping });
+        }
+        break;
+
+      case "read":
+        if (!client.partnerId || !msg.messageId) break;
+        {
+          const partner = clients.get(client.partnerId);
+          if (partner) send(partner.ws, { type: "read", messageId: msg.messageId });
+        }
+        break;
+
       case "end":
         detachPartner(id);
         removeFromQueue(id);
