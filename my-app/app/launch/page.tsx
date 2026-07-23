@@ -122,7 +122,34 @@ export default function LaunchingSoon() {
     <div className="relative min-h-screen w-full flex flex-col items-center selection:bg-[var(--color-charcoal)] selection:text-[var(--color-ivory)]"
       style={{ backgroundColor: "var(--color-ivory)" }}>
       
-      <Toaster position="top-center" />
+      <Toaster 
+        position="top-center" 
+        toastOptions={{
+          style: {
+            background: 'var(--color-ivory)',
+            color: 'var(--color-charcoal)',
+            border: '1px solid var(--color-border)',
+            boxShadow: '0 8px 30px rgba(46, 39, 36, 0.12)',
+            borderRadius: '16px',
+            fontFamily: 'var(--font-sans)',
+            fontSize: '15px',
+            fontWeight: '500',
+            padding: '16px 20px',
+          },
+          success: {
+            iconTheme: {
+              primary: 'var(--color-olive)',
+              secondary: 'var(--color-ivory)',
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: 'var(--color-peach)',
+              secondary: 'var(--color-ivory)',
+            },
+          },
+        }}
+      />
       
       <div className="fixed inset-0 z-0 pointer-events-none">
         <ParticleBackground />
@@ -227,8 +254,9 @@ export default function LaunchingSoon() {
                 onChange={(e) => setOtp(e.target.value)}
                 disabled={status === "loading"}
                 required
-                placeholder="Enter 6-digit OTP" 
-                className="flex-1 bg-transparent border-none outline-none px-6 py-4 text-[var(--color-charcoal)] placeholder-[var(--color-gray-light)] text-[15px] disabled:opacity-50 text-center tracking-widest font-mono"
+                placeholder="000000" 
+                className="flex-1 bg-transparent border-none outline-none px-6 py-4 text-[var(--color-charcoal)] placeholder-[var(--color-border)] text-2xl sm:text-3xl font-semibold disabled:opacity-50 text-center tracking-[0.4em]"
+                style={{ fontFamily: "var(--font-serif)" }}
                 maxLength={6}
               />
               <button 
