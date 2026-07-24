@@ -320,7 +320,7 @@ function ChatApp() {
   const scheduleReconnect = useCallback(() => {
     if (intentionalCloseRef.current || reconnectAttemptRef.current >= 10) { setIsReconnecting(false); setWsError(true); return; }
     setIsReconnecting(true);
-    reconnectTimerRef.current = setTimeout(() => { reconnectAttemptRef.current++; connectWS(); }, Math.min(1000 * Math.pow(2, reconnectAttemptRef.current), 30000));
+    reconnectTimerRef.current = setTimeout(() => { reconnectAttemptRef.current++; connectWS(); }, Math.min(1000 + (reconnectAttemptRef.current * 1000), 5000));
   }, []);
 
   const connectWS = useCallback(() => {
@@ -610,7 +610,7 @@ function ChatApp() {
       <AnimatePresence>
         {isReconnecting && (
           <motion.div initial={{ y: -50 }} animate={{ y: 0 }} exit={{ y: -50 }} className="fixed top-0 inset-x-0 z-[100] bg-[var(--color-charcoal)] text-[var(--color-ivory)] py-2 text-center text-xs tracking-widest uppercase font-bold flex justify-center items-center gap-3">
-            <span className="w-2 h-2 rounded-full bg-[var(--color-ivory)] animate-ping" /> Reconnecting...
+            <span className="w-2 h-2 rounded-full bg-[var(--color-ivory)] animate-ping" /> Connection unstable... Retrying
           </motion.div>
         )}
       </AnimatePresence>
